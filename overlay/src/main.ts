@@ -9,6 +9,7 @@ import {
 } from "electron";
 import * as path from "path";
 import WebSocket, { MessageEvent, ErrorEvent } from "ws";
+import { spawn, ChildProcess } from "child_process";
 import {
   handleCommandMode,
   pasteTextWithRestore,
@@ -149,7 +150,26 @@ function createTray() {
   });
 }
 
+function startBackend() {
+  const backendDir = path.join(__dirname, "..", "..", "backend");
+  console.log("[main.ts] Starting Python backend at:", backendDir);
+
+  // Use sub-process spawn
+  backendProcess = spawn("python3", ["main.py"], {
+    cwd: backendDir,
+    stdio: "inherit",
+  });
+
+  backendProcess.on("close", (code) => {
+    console.log(`[main.ts] Python backend exited with code ${code}`);
+    backendProcess = null;
+  });
+}
+
+let backendProcess: ChildProcess | null = null;
+
 app.whenReady().then(() => {
+  startBackend();
   createOverlayWindow();
   createTrayWindow();
   createTray();
@@ -170,6 +190,7 @@ ipcMain.on("set-ignore-mouse-events", (event: any, ignore: boolean) => {
 });
 
 ipcMain.on("quit-app", () => {
+  if (backendProcess) backendProcess.kill();
   app.quit();
 });
 
@@ -199,6 +220,13 @@ ipcMain.handle("toggle-overlay", () => {
 
 ipcMain.on("set-preferred-ai", (_event, ai: string) => {
   setPreferredAI(ai);
+});
+
+app.on("before-quit", () => {
+  if (backendProcess) {
+    console.log("[main.ts] Killing Python backend...");
+    backendProcess.kill();
+  }
 });
 
 app.on("window-all-closed", () => {
