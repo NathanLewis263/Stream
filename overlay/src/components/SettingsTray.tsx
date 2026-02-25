@@ -5,7 +5,7 @@ import { SettingsStatus } from "./SettingsStatus";
 import { SettingsList } from "./SettingsList";
 
 const SettingsTray = () => {
-  const { recording, hotkey, snippets, statusPort } = useStatus();
+  const { recording, snippets, statusPort } = useStatus();
 
   return (
     <div className="w-full h-full bg-zinc-900/90 backdrop-blur-md text-zinc-100 flex flex-col select-none border border-white/10 p-4">
@@ -43,9 +43,7 @@ const SettingsTray = () => {
         </TabsList>
 
         <TabsContent value="status" className="flex-1 mt-4">
-          <SettingsStatus
-            hotkey={hotkey}
-          />
+          <SettingsStatus />
         </TabsContent>
         <TabsContent value="snippets" className="flex-1 overflow-hidden mt-0">
           <SettingsList

@@ -171,7 +171,7 @@ class VoiceEngine:
             self.logger.error(f"VAD check failed: {e}")
             return True
 
-    def process_audio(self, audio_data: Optional[np.ndarray], min_delay: float = 0):
+    def process_audio(self, audio_data: Optional[np.ndarray], command_mode: bool = False):
         """
         The main processing pipeline. 
         Runs in a separate thread to not block the UI/Hotkey listener.
@@ -228,7 +228,11 @@ class VoiceEngine:
 
             # Notify listeners
             if self.on_text_generated:
-                self.on_text_generated({"text": final_text, "type": "dictation"})
+                self.on_text_generated({
+                    "text": final_text,
+                    "type": "dictation",
+                    "command_mode": command_mode
+                })
 
         except Exception as e:
             self.logger.error(f"Processing error: {e}")

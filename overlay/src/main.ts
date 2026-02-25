@@ -10,11 +10,6 @@ import {
 import * as path from "path";
 import WebSocket, { MessageEvent, ErrorEvent } from "ws";
 import {
-  setupHotkeys,
-  setRecordingState,
-  setHandsFreeState,
-} from "./main/hotkeys";
-import {
   handleCommandMode,
   pasteTextWithRestore,
   setPreferredAI,
@@ -210,42 +205,8 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
-// --- State and Config ---
+// --- State ---
 let isCommandMode = false;
-let isQuickCommand = false;
-let isHandsFree = false;
-let isRecording = false;
-
-// --- Hotkey Integration ---
-setupHotkeys({
-  onStartRecording: () => {
-    isRecording = true;
-    setRecordingState(isRecording);
-    sendAction({ action: "start" });
-  },
-  onStopRecording: () => {
-    isRecording = false;
-    sendAction({ action: "stop" });
-  },
-  onToggleRecording: () => {
-    isRecording = !isRecording;
-    setRecordingState(isRecording);
-    sendAction({ action: "toggle" });
-  },
-  onToggleHandsFree: () => {
-    isHandsFree = !isHandsFree;
-    setHandsFreeState(isHandsFree);
-  },
-  onCommandMode: (isActive: boolean) => {
-    // Toggling persistent mode
-    if (isActive) {
-      isCommandMode = !isCommandMode;
-    }
-  },
-  onQuickCommand: (isActive: boolean) => {
-    isQuickCommand = isActive;
-  },
-});
 
 // WebSocket Implementation
 const STATUS_PORT = 3847;
@@ -283,20 +244,26 @@ function connectWebSocket() {
   ws.onmessage = (event: MessageEvent) => {
     try {
       const message = JSON.parse(event.data.toString());
+
+      // Handle command mode state updates from backend
+      if (message.type === "command_mode") {
+        isCommandMode = message.data.active;
+        console.log("[main.ts] Command mode:", isCommandMode);
+      }
+
+      // Handle generated text
       if (message.type === "text_generated") {
-        const { text, type } = message.data;
+        const { text, type, command_mode } = message.data;
         console.log("[main.ts] Received text:", text, type);
 
         if (type === "paste") {
           pasteTextWithRestore(text);
+        } else if (command_mode || isCommandMode) {
+          // Backend indicates this was recorded in command mode
+          handleCommandMode(text);
+          isCommandMode = false;
         } else {
-          const shouldHandleAsCommand = isCommandMode || isQuickCommand;
-          if (shouldHandleAsCommand) {
-            isQuickCommand = false;
-            handleCommandMode(text);
-          } else {
-            pasteTextWithRestore(text);
-          }
+          pasteTextWithRestore(text);
         }
       }
     } catch (e) {

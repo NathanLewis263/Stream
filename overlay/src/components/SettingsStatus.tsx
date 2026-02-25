@@ -1,10 +1,6 @@
 import React from "react";
 import { Switch } from "./ui/switch";
 
-interface SettingsStatusProps {
-  hotkey: string;
-}
-
 declare global {
   interface Window {
     overlay: {
@@ -25,7 +21,7 @@ const AI_OPTIONS = [
   { value: "grok", label: "Grok" },
 ] as const;
 
-export const SettingsStatus: React.FC<SettingsStatusProps> = ({ hotkey }) => {
+export const SettingsStatus: React.FC = () => {
   const [ai, setAI] = React.useState("perplexity");
   const [overlayVisible, setOverlayVisible] = React.useState(true);
 
@@ -54,13 +50,27 @@ export const SettingsStatus: React.FC<SettingsStatusProps> = ({ hotkey }) => {
       <div className="flex flex-col gap-4">
         <section className="rounded-lg bg-zinc-800/40 border border-white/5 p-3">
           <h3 className="text-[10px] font-medium uppercase tracking-wider text-zinc-500 mb-2">
-            Hotkey
+            Hotkeys
           </h3>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-zinc-400">Push to talk</span>
-            <kbd className="shrink-0 px-2.5 py-1 bg-zinc-900/80 border border-white/10 rounded-md text-[11px] font-mono text-zinc-200 tracking-wide shadow-sm">
-              Ctrl + Option
-            </kbd>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-zinc-400">Push to talk</span>
+              <kbd className="shrink-0 px-2.5 py-1 bg-zinc-900/80 border border-white/10 rounded-md text-[11px] font-mono text-zinc-200 tracking-wide shadow-sm">
+                fn
+              </kbd>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-zinc-400">Hands-free</span>
+              <kbd className="shrink-0 px-2.5 py-1 bg-zinc-900/80 border border-white/10 rounded-md text-[11px] font-mono text-zinc-200 tracking-wide shadow-sm">
+                fn + Space
+              </kbd>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-zinc-400">Command mode</span>
+              <kbd className="shrink-0 px-2.5 py-1 bg-zinc-900/80 border border-white/10 rounded-md text-[11px] font-mono text-zinc-200 tracking-wide shadow-sm">
+                fn + ⌘
+              </kbd>
+            </div>
           </div>
         </section>
 
