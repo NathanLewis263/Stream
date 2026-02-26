@@ -2,11 +2,13 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from commands import command_manager
+from hotkey_config import hotkey_config
 from pydantic import BaseModel
 import threading
 import json
 import asyncio
-from typing import List
+import sys
+from typing import List, Optional, Callable
 
 STATUS_SERVER_PORT = 3847
 
@@ -39,6 +41,25 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# Callback for hotkey listener reload (set by main.py)
+hotkey_reload_callback: Optional[Callable] = None
+hotkey_start_capture_callback: Optional[Callable] = None
+hotkey_stop_capture_callback: Optional[Callable] = None
+hotkey_key_captured_callback_setter: Optional[Callable] = None
+
+def set_hotkey_reload_callback(callback: Callable):
+    global hotkey_reload_callback
+    hotkey_reload_callback = callback
+
+def set_hotkey_capture_callbacks(start_callback: Callable, stop_callback: Callable):
+    global hotkey_start_capture_callback, hotkey_stop_capture_callback
+    hotkey_start_capture_callback = start_callback
+    hotkey_stop_capture_callback = stop_callback
+
+def set_hotkey_key_captured_callback_setter(setter: Callable):
+    global hotkey_key_captured_callback_setter
+    hotkey_key_captured_callback_setter = setter
+
 class Item(BaseModel):
     key: str
     value: str
@@ -59,13 +80,18 @@ def run_status_server(engine_ref):
         await manager.connect(websocket)
         try:
             # Send initial state on connection
+            hotkeys = hotkey_config.get_hotkeys()
+            platform = sys.platform
+            ptt_key = hotkeys.get("push_to_talk", {}).get(platform, {}).get("key", "fn" if platform == "darwin" else "Ctrl+Win")
             await websocket.send_json({
                 "type": "status_update",
                 "data": {
                     "recording": engine_ref.is_recording,
                     "processing": getattr(engine_ref, "is_processing", False),
-                    "hotkey": "Ctrl Left",
-                    "snippets": command_manager.get_snippets()
+                    "hotkey": ptt_key,
+                    "snippets": command_manager.get_snippets(),
+                    "hotkeys": hotkeys,
+                    "platform": platform
                 }
             })
             while True:
@@ -98,7 +124,63 @@ def run_status_server(engine_ref):
                         selected_text = message.get("selected_text")
                         if instruction and selected_text:
                             threading.Thread(target=lambda: engine_ref.process_editor_command(selected_text, instruction)).start()
-                            
+
+                    elif action == "get_hotkeys":
+                        hotkeys = hotkey_config.get_hotkeys()
+                        await websocket.send_json({
+                            "type": "hotkeys_config",
+                            "data": {
+                                "hotkeys": hotkeys,
+                                "platform": sys.platform
+                            }
+                        })
+
+                    elif action == "set_hotkey":
+                        action_name = message.get("action_name")
+                        platform = message.get("platform", sys.platform)
+                        config = message.get("config")
+                        if action_name and config:
+                            hotkey_config.set_hotkey(action_name, platform, config)
+                            # Trigger reload in hotkey listener
+                            if hotkey_reload_callback:
+                                hotkey_reload_callback(hotkey_config.get_hotkeys())
+                            # Broadcast update to all clients
+                            await manager.broadcast({
+                                "type": "hotkeys_updated",
+                                "data": {
+                                    "hotkeys": hotkey_config.get_hotkeys(),
+                                    "platform": sys.platform
+                                }
+                            })
+
+                    elif action == "reset_hotkeys":
+                        hotkey_config.reset_to_defaults()
+                        if hotkey_reload_callback:
+                            hotkey_reload_callback(hotkey_config.get_hotkeys())
+                        await manager.broadcast({
+                            "type": "hotkeys_updated",
+                            "data": {
+                                "hotkeys": hotkey_config.get_hotkeys(),
+                                "platform": sys.platform
+                            }
+                        })
+
+                    elif action == "start_capture":
+                        if hotkey_start_capture_callback:
+                            hotkey_start_capture_callback()
+                            await websocket.send_json({
+                                "type": "capture_started",
+                                "data": {"success": True}
+                            })
+
+                    elif action == "stop_capture":
+                        if hotkey_stop_capture_callback:
+                            hotkey_stop_capture_callback()
+                            await websocket.send_json({
+                                "type": "capture_stopped",
+                                "data": {"success": True}
+                            })
+
                 except json.JSONDecodeError:
                     print(f"Invalid JSON received: {data}")
                     
@@ -111,9 +193,11 @@ def run_status_server(engine_ref):
         running_loop = asyncio.get_running_loop()
         def bridge_to_async(topic, data):
             asyncio.run_coroutine_threadsafe(manager.broadcast({"type": topic, "data": data}), running_loop)
-                
+
         engine_ref.on_status_change = lambda data: bridge_to_async("status_update", data)
         engine_ref.on_text_generated = lambda data: bridge_to_async("text_generated", data)
+
+        hotkey_key_captured_callback_setter(lambda data: bridge_to_async("key_captured", data))
 
     @app.post("/snippets")
     def add_snippet(item: Item):

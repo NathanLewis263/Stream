@@ -6,8 +6,9 @@ import time
 from dotenv import load_dotenv
 
 from voice_engine import VoiceEngine
-from server import run_status_server, STATUS_SERVER_PORT
+from server import run_status_server, STATUS_SERVER_PORT, set_hotkey_reload_callback, set_hotkey_capture_callbacks, set_hotkey_key_captured_callback_setter
 from hotkeys import HotkeyListener, HotkeyCallbacks
+from hotkey_config import hotkey_config
 
 # --- Setup & Configuration ---
 load_dotenv()
@@ -68,8 +69,19 @@ def main():
     callbacks.on_command_mode = on_command_mode
 
     # --- Start Hotkey Listener ---
-    hotkey_listener = HotkeyListener(callbacks)
+    hotkey_listener = HotkeyListener(callbacks, hotkey_config.get_hotkeys())
     hotkey_listener.start()
+
+    # Set up reload callback for when hotkeys are changed via settings
+    set_hotkey_reload_callback(hotkey_listener.reload_config)
+
+    # Set up capture callbacks for settings UI
+    set_hotkey_capture_callbacks(hotkey_listener.start_capture, hotkey_listener.stop_capture)
+
+    # Set up key captured callback setter
+    def set_key_captured_callback(cb):
+        callbacks.on_key_captured = cb
+    set_hotkey_key_captured_callback_setter(set_key_captured_callback)
 
     # --- Start the API Server ---
     threading.Thread(
@@ -78,16 +90,17 @@ def main():
         daemon=True
     ).start()
 
-    # Platform-specific hotkey info
-    if sys.platform == "darwin":
-        hotkey_info = "fn (hold to talk)"
-    else:
-        hotkey_info = "Ctrl + Win (hold to talk)"
+    # Get hotkey info from config
+    hotkeys = hotkey_config.get_hotkeys()
+    platform = sys.platform
+    ptt_key = hotkeys.get("push_to_talk", {}).get(platform, {}).get("key", "fn" if platform == "darwin" else "Ctrl+Win")
+    hands_free_key = hotkeys.get("hands_free_modifier", {}).get(platform, {}).get("key", "Space")
+    cmd_mode_key = hotkeys.get("command_mode_modifier", {}).get(platform, {}).get("key", "Cmd" if platform == "darwin" else "Shift")
 
     print(f"\nStream Dictation Ready")
-    print(f"   • Hotkey: {hotkey_info}")
-    print(f"   • Hands-free: Hotkey + Space")
-    print(f"   • Command mode: Hotkey + Cmd")
+    print(f"   • Hotkey: {ptt_key} (hold to talk)")
+    print(f"   • Hands-free: {ptt_key} + {hands_free_key}")
+    print(f"   • Command mode: {ptt_key} + {cmd_mode_key}")
     print(f"   • Ctrl+C to Exit\n")
 
     # Keep the main thread alive

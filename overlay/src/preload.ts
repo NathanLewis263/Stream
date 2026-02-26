@@ -10,4 +10,5 @@ contextBridge.exposeInMainWorld("overlay", {
   quitApp: () => ipcRenderer.send("quit-app"),
   getOverlayVisible: () => ipcRenderer.invoke("get-overlay-visible"),
   toggleOverlay: () => ipcRenderer.invoke("toggle-overlay"),
+  openSettings: () => ipcRenderer.send("open-settings"),
 });

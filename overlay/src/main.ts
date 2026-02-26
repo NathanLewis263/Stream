@@ -69,6 +69,7 @@ function createOverlayWindow(): BrowserWindow {
 
 let tray: Tray | null = null;
 let trayWindow: BrowserWindow | null = null;
+let settingsWindow: BrowserWindow | null = null;
 
 function createTrayWindow() {
   trayWindow = new BrowserWindow({
@@ -76,7 +77,7 @@ function createTrayWindow() {
     height: 400,
     type: "panel",
     frame: false,
-    resizable: true,
+    resizable: false,
     show: false,
     transparent: true,
     alwaysOnTop: true,
@@ -100,6 +101,40 @@ function createTrayWindow() {
     : `file://${path.join(__dirname, "..", "dist-react", "index.html")}?window=tray`;
 
   trayWindow.loadURL(trayUrl);
+}
+
+function createSettingsWindow() {
+  if (settingsWindow) {
+    settingsWindow.focus();
+    return;
+  }
+
+  settingsWindow = new BrowserWindow({
+    width: 600,
+    height: 500,
+    minWidth: 400,
+    minHeight: 400,
+    frame: true,
+    resizable: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  settingsWindow.on("closed", () => {
+    settingsWindow = null;
+  });
+
+  const isDev = process.env.NODE_ENV === "development";
+  const settingsUrl = isDev
+    ? "http://localhost:3000?window=settings"
+    : `file://${path.join(__dirname, "..", "dist-react", "index.html")}?window=settings`;
+
+  settingsWindow.loadURL(settingsUrl);
+  settingsWindow.once("ready-to-show", () => settingsWindow?.show());
 }
 
 const toggleTrayWindow = () => {
@@ -132,6 +167,11 @@ function createTray() {
   tray.on("click", () => toggleTrayWindow());
 
   const contextMenu = Menu.buildFromTemplate([
+    {
+      label: "Settings",
+      click: () => createSettingsWindow(),
+    },
+    { type: "separator" },
     {
       label: "Show Overlay",
       click: () => BrowserWindow.getAllWindows().forEach((w) => w.show()),
@@ -220,6 +260,10 @@ ipcMain.handle("toggle-overlay", () => {
 
 ipcMain.on("set-preferred-ai", (_event, ai: string) => {
   setPreferredAI(ai);
+});
+
+ipcMain.on("open-settings", () => {
+  createSettingsWindow();
 });
 
 app.on("before-quit", () => {

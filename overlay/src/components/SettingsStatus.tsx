@@ -11,6 +11,7 @@ declare global {
       toggleOverlay: () => Promise<boolean>;
       quitApp: () => void;
       setPreferredAI: (ai: string) => void;
+      openSettings: () => void;
     };
   }
 }
@@ -109,6 +110,12 @@ export const SettingsStatus: React.FC = () => {
             />
           </div>
         </div>
+        <button
+          onClick={() => window.overlay?.openSettings?.()}
+          className="w-full px-3 py-2.5 bg-zinc-900/80 hover:bg-zinc-800/50 border border-white/10 rounded-md text-sm text-zinc-200 hover:text-white transition-all active:scale-[0.99]"
+        >
+          Open Settings
+        </button>
         <button
           onClick={() => window.overlay?.quitApp()}
           className="w-full px-3 py-2.5 bg-red-950/40 hover:bg-red-900/50 border border-red-500/20 rounded-md text-sm text-red-300 hover:text-red-200 transition-all active:scale-[0.99]"
