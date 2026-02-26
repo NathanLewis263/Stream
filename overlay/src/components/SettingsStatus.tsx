@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useEffect, useCallback } from "react";
 import { Switch } from "./ui/switch";
+import { useHotkeys } from "../hooks/useHotkeys";
 
 declare global {
   interface Window {
@@ -22,19 +23,37 @@ const AI_OPTIONS = [
   { value: "grok", label: "Grok" },
 ] as const;
 
-export const SettingsStatus: React.FC = () => {
+export const SettingsStatus = () => {
   const [ai, setAI] = React.useState("perplexity");
   const [overlayVisible, setOverlayVisible] = React.useState(true);
+  const { hotkeys, platform } = useHotkeys();
 
-  React.useEffect(() => {
+  const getKeyDisplay = useCallback(
+    (actionName: string): string => {
+      if (!hotkeys) {
+        if (actionName === "push_to_talk") return "fn";
+        if (actionName === "hands_free_modifier") return "Space";
+        if (actionName === "command_mode_modifier") return "⌘";
+        return "Unknown";
+      }
+      const action = hotkeys[actionName as keyof typeof hotkeys];
+      if (!action) return "Not set";
+      const platformConfig = action[platform as keyof typeof action];
+      if (!platformConfig) return "Not set";
+      return platformConfig.key || "Unknown";
+    },
+    [hotkeys, platform],
+  );
+
+  useEffect(() => {
     window.overlay?.getOverlayVisible?.().then(setOverlayVisible).catch(() => {});
   }, []);
 
   const handleOverlayToggle = (checked: boolean) => {
     setOverlayVisible(checked);
     window.overlay?.toggleOverlay?.().then(setOverlayVisible).catch(() => {
-      setOverlayVisible(!checked);
-    });
+        setOverlayVisible(!checked);
+      });
   };
 
   const handleAIChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -57,19 +76,21 @@ export const SettingsStatus: React.FC = () => {
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-zinc-400">Push to talk</span>
               <kbd className="shrink-0 px-2.5 py-1 bg-zinc-900/80 border border-white/10 rounded-md text-[11px] font-mono text-zinc-200 tracking-wide shadow-sm">
-                fn
+                {getKeyDisplay("push_to_talk")}
               </kbd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-zinc-400">Hands-free</span>
               <kbd className="shrink-0 px-2.5 py-1 bg-zinc-900/80 border border-white/10 rounded-md text-[11px] font-mono text-zinc-200 tracking-wide shadow-sm">
-                fn + Space
+                {getKeyDisplay("push_to_talk")} +{" "}
+                {getKeyDisplay("hands_free_modifier")}
               </kbd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-zinc-400">Command mode</span>
               <kbd className="shrink-0 px-2.5 py-1 bg-zinc-900/80 border border-white/10 rounded-md text-[11px] font-mono text-zinc-200 tracking-wide shadow-sm">
-                fn + ⌘
+                {getKeyDisplay("push_to_talk")} +{" "}
+                {getKeyDisplay("command_mode_modifier")}
               </kbd>
             </div>
           </div>

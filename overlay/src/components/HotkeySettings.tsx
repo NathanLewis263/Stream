@@ -203,7 +203,7 @@ export const HotkeySettings = () => {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 bg-zinc-900">
       <div className="text-sm text-zinc-400 mb-4">
         Click a hotkey to record a new shortcut. Hold the keys you want to use, then click Save.
         <div className="mt-2 text-xs text-zinc-500 space-y-1">
