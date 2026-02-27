@@ -17,59 +17,10 @@ import {
   setSendAction,
 } from "./main/commands";
 
-function createOverlayWindow(): BrowserWindow {
-  const primary = screen.getPrimaryDisplay();
-  const { width, height, x, y } = primary.bounds;
-
-  const win = new BrowserWindow({
-    x,
-    y,
-    width,
-    height,
-    type: "panel",
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    resizable: false,
-    fullscreenable: false,
-    hasShadow: false,
-    focusable: false,
-    fullscreen: true,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-    show: false,
-  });
-
-  win.setMenuBarVisibility(true);
-  win.setAlwaysOnTop(true, "screen-saver", 1);
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  win.setWindowButtonVisibility(false);
-
-  // Load the overlay page
-  const isDev = process.env.NODE_ENV === "development";
-
-  if (isDev) {
-    win.loadURL("http://localhost:3000");
-  } else {
-    // In production, we load the index.html from dist-react
-    win.loadFile(path.join(__dirname, "..", "dist-react", "index.html"));
-  }
-
-  win.once("ready-to-show", () => {
-    win.show();
-    // Click-through so the overlay doesn't block the desktop; info panel is display-only
-    win.setIgnoreMouseEvents(true, { forward: true });
-  });
-
-  return win;
-}
-
 let tray: Tray | null = null;
 let trayWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
+let pillWindow: BrowserWindow | null = null;
 
 function createTrayWindow() {
   trayWindow = new BrowserWindow({
@@ -135,6 +86,54 @@ function createSettingsWindow() {
 
   settingsWindow.loadURL(settingsUrl);
   settingsWindow.once("ready-to-show", () => settingsWindow?.show());
+}
+
+function createPillWindow() {
+  const primary = screen.getPrimaryDisplay();
+  const { width, height } = primary.bounds;
+
+  // Pill dimensions
+  const pillWidth = 240;
+  const pillHeight = 80;
+  const bottomPadding = 32;
+
+  pillWindow = new BrowserWindow({
+    x: Math.round((width - pillWidth) / 2),
+    y: height - pillHeight - bottomPadding,
+    width: pillWidth,
+    height: pillHeight,
+    type: "panel",
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    fullscreenable: false,
+    hasShadow: false,
+    focusable: false,
+    skipTaskbar: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+    show: false,
+  });
+
+  pillWindow.setAlwaysOnTop(true, "screen-saver", 1);
+  pillWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  const isDev = process.env.NODE_ENV === "development";
+
+  if (isDev) {
+    pillWindow.loadURL("http://localhost:3000");
+  } else {
+    pillWindow.loadFile(path.join(__dirname, "..", "dist-react", "index.html"));
+  }
+
+  pillWindow.once("ready-to-show", () => {
+    pillWindow?.show();
+    pillWindow?.setIgnoreMouseEvents(true, { forward: true });
+  });
 }
 
 const toggleTrayWindow = () => {
@@ -210,8 +209,8 @@ let backendProcess: ChildProcess | null = null;
 
 app.whenReady().then(() => {
   startBackend();
-  createOverlayWindow();
   createTrayWindow();
+  createPillWindow();
   createTray();
 });
 
@@ -235,25 +234,19 @@ ipcMain.on("quit-app", () => {
 });
 
 function getOverlayVisible(): boolean {
-  const overlayWindows = BrowserWindow.getAllWindows().filter(
-    (w) => w !== trayWindow && w !== settingsWindow,
-  );
-  return overlayWindows.some((w) => w.isVisible());
+  return pillWindow?.isVisible() ?? false;
 }
 
 ipcMain.handle("get-overlay-visible", () => getOverlayVisible());
 
 ipcMain.handle("toggle-overlay", () => {
-  const overlayWindows = BrowserWindow.getAllWindows().filter(
-    (w) => w !== trayWindow && w !== settingsWindow,
-  );
-  const anyVisible = overlayWindows.some((w) => w.isVisible());
+  if (!pillWindow) return false;
 
-  if (anyVisible) {
-    overlayWindows.forEach((w) => w.hide());
+  if (pillWindow.isVisible()) {
+    pillWindow.hide();
     return false;
   } else {
-    overlayWindows.forEach((w) => w.show());
+    pillWindow.show();
     return true;
   }
 });

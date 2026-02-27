@@ -49,9 +49,11 @@ class VoiceEngine:
         self.is_recording = False
         self.is_processing = False
         self.audio_data = []
+        self.current_audio_level = 0.0
         # Callbacks
         self.on_status_change = None
         self.on_text_generated = None
+        self.on_audio_level = None
 
     def notify_status(self):
         """Helper to trigger status callback"""
@@ -115,6 +117,16 @@ class VoiceEngine:
             self.logger.warning(f"Audio status: {status}")
         if self.is_recording:
             self.audio_data.append(indata.copy())
+            # Calculate audio level (RMS normalized to 0-1, exaggerated for visibility)
+            rms = np.sqrt(np.mean(indata.astype(np.float32) ** 2))
+            # More sensitive normalization for better visual feedback
+            normalized = rms / 3000.0
+            self.current_audio_level = float(normalized)
+            if self.on_audio_level:
+                try:
+                    self.on_audio_level(self.current_audio_level)
+                except Exception:
+                    pass
 
     def stop_recording(self) -> Optional[np.ndarray]:
         """Stops capturing and returns the full audio buffer."""
@@ -122,9 +134,10 @@ class VoiceEngine:
             if not self.is_recording:
                 self.logger.warning("Not recording, ignoring stop request")
                 return None
-                
+
             self.logger.info("*** STOPPING RECORDING ***")
             self.is_recording = False
+            self.current_audio_level = 0.0
             self.notify_status()
             try:
                 if hasattr(self, 'stream'):
@@ -132,12 +145,31 @@ class VoiceEngine:
                     self.stream.close()
             except Exception as e:
                 self.logger.error(f"Error stopping stream: {e}")
-            
+
             if not self.audio_data:
                 self.logger.warning("No audio data captured")
                 return None
-                
+
             return np.concatenate(self.audio_data, axis=0)
+
+    def discard_recording(self):
+        """Stops capturing and discards the audio without processing."""
+        with self.lock:
+            if not self.is_recording:
+                self.logger.warning("Not recording, ignoring discard request")
+                return
+
+            self.logger.info("*** DISCARDING RECORDING ***")
+            self.is_recording = False
+            self.current_audio_level = 0.0
+            self.audio_data = []
+            self.notify_status()
+            try:
+                if hasattr(self, 'stream'):
+                    self.stream.stop()
+                    self.stream.close()
+            except Exception as e:
+                self.logger.error(f"Error stopping stream: {e}")
 
 
     def _contains_speech(self, audio_data: np.ndarray) -> bool:

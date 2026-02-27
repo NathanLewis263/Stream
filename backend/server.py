@@ -111,6 +111,11 @@ def run_status_server(engine_ref):
                                 audio_data = engine_ref.stop_recording()
                                 threading.Thread(target=lambda: engine_ref.process_audio(audio_data)).start()
 
+                    elif action == "discard":
+                        with engine_ref.lock:
+                            if engine_ref.is_recording:
+                                engine_ref.discard_recording()
+
                     elif action == "toggle":
                         with engine_ref.lock:
                             if engine_ref.is_recording:
@@ -196,6 +201,7 @@ def run_status_server(engine_ref):
 
         engine_ref.on_status_change = lambda data: bridge_to_async("status_update", data)
         engine_ref.on_text_generated = lambda data: bridge_to_async("text_generated", data)
+        engine_ref.on_audio_level = lambda level: bridge_to_async("audio_level", {"level": level})
 
         hotkey_key_captured_callback_setter(lambda data: bridge_to_async("key_captured", data))
 
