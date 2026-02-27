@@ -202,11 +202,13 @@ def run_status_server(engine_ref):
     @app.post("/snippets")
     def add_snippet(item: Item):
         command_manager.add_snippet(item.key, item.value)
+        engine_ref.notify_status()
         return {"status": "ok"}
 
     @app.delete("/snippets/{key}")
     def delete_snippet(key: str):
         command_manager.remove_snippet(key)
+        engine_ref.notify_status()
         return {"status": "ok"}
     
     uvicorn.run(app, host="127.0.0.1", port=STATUS_SERVER_PORT, log_level="warning")

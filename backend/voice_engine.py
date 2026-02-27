@@ -53,7 +53,7 @@ class VoiceEngine:
         self.on_status_change = None
         self.on_text_generated = None
 
-    def _notify_status(self):
+    def notify_status(self):
         """Helper to trigger status callback"""
         if self.on_status_change:
             status = {
@@ -104,7 +104,7 @@ class VoiceEngine:
                 )
                 self.stream.start()
                 self.logger.info("Audio stream started successfully")
-                self._notify_status()
+                self.notify_status()
             except Exception as e:
                 self.logger.error(f"Failed to start audio stream: {e}")
                 self.is_recording = False
@@ -125,7 +125,7 @@ class VoiceEngine:
                 
             self.logger.info("*** STOPPING RECORDING ***")
             self.is_recording = False
-            self._notify_status()
+            self.notify_status()
             try:
                 if hasattr(self, 'stream'):
                     self.stream.stop()
@@ -181,7 +181,7 @@ class VoiceEngine:
             return
 
         self.is_processing = True
-        self._notify_status()
+        self.notify_status()
         try:
             if not self.client:
                 self.logger.error("No API Client available.")
@@ -238,14 +238,14 @@ class VoiceEngine:
             self.logger.error(f"Processing error: {e}")
         finally:
             self.is_processing = False
-            self._notify_status()
+            self.notify_status()
 
     def process_editor_command(self, selected_text: str, instruction: str):
         """
         Processes a text-based command on selected text.
         """
         self.is_processing = True
-        self._notify_status()
+        self.notify_status()
         try:
             if not self.client:
                 self.logger.error("No API Client available.")
@@ -278,4 +278,4 @@ class VoiceEngine:
             self.logger.error(f"Processing error: {e}")
         finally:
             self.is_processing = False
-            self._notify_status()
+            self.notify_status()

@@ -73,8 +73,8 @@ let settingsWindow: BrowserWindow | null = null;
 
 function createTrayWindow() {
   trayWindow = new BrowserWindow({
-    width: 280,
-    height: 400,
+    width: 300,
+    height: 380,
     type: "panel",
     frame: false,
     resizable: false,
@@ -236,7 +236,7 @@ ipcMain.on("quit-app", () => {
 
 function getOverlayVisible(): boolean {
   const overlayWindows = BrowserWindow.getAllWindows().filter(
-    (w) => w !== trayWindow,
+    (w) => w !== trayWindow && w !== settingsWindow,
   );
   return overlayWindows.some((w) => w.isVisible());
 }
@@ -245,7 +245,7 @@ ipcMain.handle("get-overlay-visible", () => getOverlayVisible());
 
 ipcMain.handle("toggle-overlay", () => {
   const overlayWindows = BrowserWindow.getAllWindows().filter(
-    (w) => w !== trayWindow,
+    (w) => w !== trayWindow && w !== settingsWindow,
   );
   const anyVisible = overlayWindows.some((w) => w.isVisible());
 
