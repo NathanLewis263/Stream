@@ -61,6 +61,13 @@ class HotkeyListener:
         self.is_capturing = False
         self.captured_keycodes: Set[int] = set()
 
+        self._command_timer: Optional[threading.Timer] = None
+
+    def _cancel_command_timer(self):
+        if self._command_timer:
+            self._command_timer.cancel()
+            self._command_timer = None
+
     def _get_platform_config(self) -> Dict[str, Any]:
         """Get config for current platform"""
         platform = sys.platform
@@ -101,6 +108,7 @@ class HotkeyListener:
             self.is_command_mode = False
             self.pressed_keycodes = set()
             self.fn_key_pressed = False
+            self._cancel_command_timer()
             if was_running:
                 self.start()
 
@@ -297,9 +305,14 @@ class HotkeyListener:
                     if mod_pressed and not self.modifier_pressed:
                         self.modifier_pressed = True
                         if self.hotkey_pressed:
+                            self._cancel_command_timer()
                             self._on_command_mode(True)
                     elif not mod_pressed and self.modifier_pressed:
                         self.modifier_pressed = False
+                        if self.is_command_mode:
+                            self._cancel_command_timer()
+                            self._command_timer = threading.Timer(0.1, lambda: self._on_command_mode(False))
+                            self._command_timer.start()
 
                 # Handle hands-free toggle (regular key press while PTT held)
                 if event_type == kCGEventKeyDown:
@@ -370,7 +383,10 @@ class HotkeyListener:
             ptt_vk_codes = [ptt_vk_codes] if ptt_vk_codes else [0x11, 0x5B]
         hands_free_vk = hands_free_config.get("vk_code", 0x20)
 
-        logger.info(f"Windows hotkeys configured - PTT: {[hex(vk) for vk in ptt_vk_codes]}, Hands-free: {hands_free_vk:#x}")
+        cmd_mode_config = platform_config.get("command_mode_modifier", DEFAULT_WIN_CONFIG["command_mode_modifier"])
+        cmd_mode_vk = cmd_mode_config.get("vk_code", 0x10)
+
+        logger.info(f"Windows hotkeys configured - PTT: {[hex(vk) for vk in ptt_vk_codes]}, Hands-free: {hands_free_vk:#x}, Cmd: {cmd_mode_vk:#x}")
 
         while self.running:
             # Check if all push-to-talk keys are pressed
@@ -393,6 +409,21 @@ class HotkeyListener:
             elif not space_pressed:
                 self.hands_free_pressed = False
 
+            # Command mode toggle
+            cmd_pressed = user32.GetAsyncKeyState(cmd_mode_vk) & 0x8000
+            
+            if cmd_pressed and not self.modifier_pressed:
+                self.modifier_pressed = True
+                if self.hotkey_pressed:
+                    self._cancel_command_timer()
+                    self._on_command_mode(True)
+            elif not cmd_pressed and self.modifier_pressed:
+                self.modifier_pressed = False
+                if self.is_command_mode:
+                    self._cancel_command_timer()
+                    self._command_timer = threading.Timer(0.1, lambda: self._on_command_mode(False))
+                    self._command_timer.start()
+
             # Small sleep to prevent CPU spinning
             import time
             time.sleep(0.01)
@@ -413,6 +444,8 @@ class HotkeyListener:
             self.is_recording = False
             if self.callbacks.on_stop_recording:
                 self.callbacks.on_stop_recording()
+
+        self._cancel_command_timer()
 
         # Reset command mode on hotkey release
         if self.is_command_mode:

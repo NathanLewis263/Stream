@@ -3,6 +3,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 export interface StatusData {
   recording: boolean;
   processing: boolean;
+  hands_free: boolean;
+  command_mode: boolean;
   hotkey: string;
   commands: Record<string, string> | null;
   snippets: Record<string, string> | null;
@@ -11,6 +13,8 @@ export interface StatusData {
 export const useStatus = () => {
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [handsFree, setHandsFree] = useState(false);
+  const [commandMode, setCommandMode] = useState(false);
   const [hotkey, setHotkey] = useState("—");
   const [snippets, setSnippets] = useState<Record<string, string> | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
@@ -42,6 +46,8 @@ export const useStatus = () => {
             const data = message.data;
             setRecording(Boolean(data.recording));
             setProcessing(Boolean(data.processing));
+            setHandsFree(Boolean(data.hands_free));
+            setCommandMode(Boolean(data.command_mode));
             setHotkey(data.hotkey || "—");
             setSnippets(data.snippets);
 
@@ -74,5 +80,15 @@ export const useStatus = () => {
     };
   }, [statusPort]);
 
-  return { recording, processing, hotkey, snippets, statusPort, sendAction, audioLevel };
+  return {
+    recording,
+    processing,
+    handsFree,
+    commandMode,
+    hotkey,
+    snippets,
+    statusPort,
+    sendAction,
+    audioLevel,
+  };
 };

@@ -88,6 +88,8 @@ def run_status_server(engine_ref):
                 "data": {
                     "recording": engine_ref.is_recording,
                     "processing": getattr(engine_ref, "is_processing", False),
+                    "hands_free": getattr(engine_ref, "is_hands_free", False),
+                    "command_mode": getattr(engine_ref, "is_command_mode", False),
                     "hotkey": ptt_key,
                     "snippets": command_manager.get_snippets(),
                     "hotkeys": hotkeys,

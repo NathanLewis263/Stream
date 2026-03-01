@@ -48,6 +48,8 @@ class VoiceEngine:
         self.client = Groq(api_key=self.api_key) if self.api_key else None
         self.is_recording = False
         self.is_processing = False
+        self.is_hands_free = False
+        self.is_command_mode = False
         self.audio_data = []
         self.current_audio_level = 0.0
         # Callbacks
@@ -61,6 +63,8 @@ class VoiceEngine:
             status = {
                 "recording": self.is_recording,
                 "processing": self.is_processing,
+                "hands_free": self.is_hands_free,
+                "command_mode": self.is_command_mode,
                 "hotkey": "Ctrl Left", # TODO: Make dynamic
                 "snippets": command_manager.get_snippets()
             }

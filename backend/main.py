@@ -56,11 +56,14 @@ def main():
 
     def on_toggle_hands_free():
         logger.info("Hands-free toggled")
-        # Status is tracked in HotkeyListener
+        engine.is_hands_free = hotkey_listener.is_hands_free
+        engine.notify_status()
 
     def on_command_mode(active: bool):
         global command_mode_active
         command_mode_active = active
+        engine.is_command_mode = active
+        engine.notify_status()
         logger.info(f"Command mode: {active}")
 
     callbacks.on_start_recording = on_start
