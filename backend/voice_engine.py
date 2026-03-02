@@ -16,6 +16,7 @@ from pynput import keyboard
 from groq import Groq
 import ten_vad
 from commands import command_manager
+from active_context import get_active_context
 
 # Constants (moved from main.py)
 SAMPLE_RATE = 16000
@@ -249,7 +250,26 @@ class VoiceEngine:
 
             # --- 3. Refine/Format using LLM ---
             system_prompt = self.get_system_prompt()
-            system_prompt += f"\n\n### Context\nSnippets: {command_manager.get_snippets()}"
+            system_prompt += f"\n\n### Snippet Context\nSnippets: {command_manager.get_snippets()}"
+
+            # Add active UI context via subprocess to avoid PyObjC caching bugs
+            active_ctx = {}
+            try:
+                import subprocess, json
+                script_path = os.path.join(os.path.dirname(__file__), "active_context.py")
+                result = subprocess.run([sys.executable, script_path], capture_output=True, text=True, check=True)
+                active_ctx = json.loads(result.stdout.strip())
+            except Exception as e:
+                self.logger.error(f"Failed to fetch active context subprocess: {e}")
+
+            self.logger.info(f"Active Context: {active_ctx}")
+            if active_ctx:
+                system_prompt += "\n\n### Application Context"
+                system_prompt += f"\nActive Application: {active_ctx.get('app', 'Unknown')}"
+                if 'url' in active_ctx:
+                    system_prompt += f"\nBrowser URL: {active_ctx['url']}"
+                if 'title' in active_ctx:
+                    system_prompt += f"\nBrowser Tab Title: {active_ctx['title']}"
 
             completion = self.client.chat.completions.create(
                 model="openai/gpt-oss-120b",
@@ -292,7 +312,26 @@ class VoiceEngine:
 
             # --- Refine/Format using LLM ---
             system_prompt = self.get_system_prompt()
-            system_prompt += f"\n\n### Context\nSelected Text: {selected_text}\nSnippets: {command_manager.get_snippets()}"
+            system_prompt += f"\n\n### Edit Context\nSelected Text: {selected_text}\nSnippets: {command_manager.get_snippets()}"
+
+            # Add active UI context via subprocess to avoid PyObjC caching bugs
+            active_ctx = {}
+            try:
+                import subprocess, json
+                script_path = os.path.join(os.path.dirname(__file__), "active_context.py")
+                result = subprocess.run([sys.executable, script_path], capture_output=True, text=True, check=True)
+                active_ctx = json.loads(result.stdout.strip())
+            except Exception as e:
+                self.logger.error(f"Failed to fetch active context subprocess: {e}")
+
+            self.logger.info(f"Active Context: {active_ctx}")
+            if active_ctx:
+                system_prompt += "\n\n### Application Context"
+                system_prompt += f"\nActive Application: {active_ctx.get('app', 'Unknown')}"
+                if 'url' in active_ctx:
+                    system_prompt += f"\nBrowser URL: {active_ctx['url']}"
+                if 'title' in active_ctx:
+                    system_prompt += f"\nBrowser Tab Title: {active_ctx['title']}"
 
             completion = self.client.chat.completions.create(
                 model="openai/gpt-oss-120b",
