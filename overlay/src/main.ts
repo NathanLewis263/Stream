@@ -12,7 +12,6 @@ import WebSocket, { MessageEvent, ErrorEvent } from "ws";
 import { spawn, ChildProcess } from "child_process";
 import {
   handleCommandMode,
-  pasteTextWithRestore,
   setPreferredAI,
   setSendAction,
 } from "./main/commands";
@@ -318,17 +317,13 @@ function connectWebSocket() {
 
       // Handle generated text
       if (message.type === "text_generated") {
-        const { text, type, command_mode } = message.data;
-        console.log("[main.ts] Received text:", text, type);
+        const { text, command_mode, output_method } = message.data;
+        console.log("[main.ts] Received text:", text, "output_method:", output_method);
 
-        if (type === "paste") {
-          pasteTextWithRestore(text);
-        } else if (command_mode || isCommandMode) {
+        if (command_mode || isCommandMode) {
           // Backend indicates this was recorded in command mode
           handleCommandMode(text);
           isCommandMode = false;
-        } else {
-          pasteTextWithRestore(text);
         }
       }
     } catch (e) {

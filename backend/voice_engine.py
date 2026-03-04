@@ -1,22 +1,20 @@
 import logging
 import os
-import time
 import io
 import sys
+import json
+import subprocess
 import threading
 from typing import Optional
 from pathlib import Path
 
-# Third-party libraries
 import sounddevice as sd
 import numpy as np
 import scipy.io.wavfile as wav
-import pyperclip
-from pynput import keyboard
 from groq import Groq
 import ten_vad
 from commands import command_manager
-from active_context import get_active_context
+from text_output import output_text
 
 # Constants (moved from main.py)
 SAMPLE_RATE = 16000
@@ -27,9 +25,9 @@ class VoiceEngine:
     """
     Manages the audio pipeline:
     1. Record Audio (sounddevice)
-    2. Transcribe (openai/whisper-large-v3-turbo)
-    3. Refine (openai/gpt-oss-120b)
-    4. Paste (pyperclip + keyboard simulation)
+    2. Transcribe (Groq Whisper)
+    3. Refine/Format (LLM)
+    4. Output (type-first with clipboard fallback)
     """
     def __init__(self):
         self.logger = logging.getLogger(__name__)
@@ -90,6 +88,21 @@ class VoiceEngine:
         except Exception as e:
             self.logger.warning(f"Could not read system.md: {e}")
             return "You are a helpful assistant."
+
+    def _get_active_context(self) -> dict:
+        """Gets active UI context via subprocess to avoid PyObjC caching."""
+        try:
+            script_path = os.path.join(os.path.dirname(__file__), "active_context.py")
+            result = subprocess.run(
+                [sys.executable, script_path],
+                capture_output=True, text=True, check=True
+            )
+            ctx = json.loads(result.stdout.strip())
+            self.logger.info(f"Active Context: {ctx}")
+            return ctx
+        except Exception as e:
+            self.logger.error(f"Failed to fetch active context: {e}")
+            return {}
 
     def start_recording(self):
         """Begins capturing audio from the microphone."""
@@ -253,16 +266,7 @@ class VoiceEngine:
             system_prompt += f"\n\n### Snippet Context\nSnippets: {command_manager.get_snippets()}"
 
             # Add active UI context via subprocess to avoid PyObjC caching bugs
-            active_ctx = {}
-            try:
-                import subprocess, json
-                script_path = os.path.join(os.path.dirname(__file__), "active_context.py")
-                result = subprocess.run([sys.executable, script_path], capture_output=True, text=True, check=True)
-                active_ctx = json.loads(result.stdout.strip())
-            except Exception as e:
-                self.logger.error(f"Failed to fetch active context subprocess: {e}")
-
-            self.logger.info(f"Active Context: {active_ctx}")
+            active_ctx = self._get_active_context()
             if active_ctx:
                 system_prompt += "\n\n### Application Context"
                 system_prompt += f"\nActive Application: {active_ctx.get('app', 'Unknown')}"
@@ -282,12 +286,18 @@ class VoiceEngine:
             final_text = completion.choices[0].message.content.strip()
             self.logger.info(f"Final: {final_text}")
 
+            # --- 4. Output Text (type-first with clipboard fallback) ---
+            if not command_mode:
+                output_result = output_text(final_text)
+                self.logger.info(f"Output result: {output_result}")
+
             # Notify listeners
             if self.on_text_generated:
                 self.on_text_generated({
                     "text": final_text,
                     "type": "dictation",
-                    "command_mode": command_mode
+                    "command_mode": command_mode,
+                    "output_method": output_result.get("method") if not command_mode else None
                 })
 
         except Exception as e:
@@ -315,16 +325,7 @@ class VoiceEngine:
             system_prompt += f"\n\n### Edit Context\nSelected Text: {selected_text}\nSnippets: {command_manager.get_snippets()}"
 
             # Add active UI context via subprocess to avoid PyObjC caching bugs
-            active_ctx = {}
-            try:
-                import subprocess, json
-                script_path = os.path.join(os.path.dirname(__file__), "active_context.py")
-                result = subprocess.run([sys.executable, script_path], capture_output=True, text=True, check=True)
-                active_ctx = json.loads(result.stdout.strip())
-            except Exception as e:
-                self.logger.error(f"Failed to fetch active context subprocess: {e}")
-
-            self.logger.info(f"Active Context: {active_ctx}")
+            active_ctx = self._get_active_context()
             if active_ctx:
                 system_prompt += "\n\n### Application Context"
                 system_prompt += f"\nActive Application: {active_ctx.get('app', 'Unknown')}"
@@ -345,9 +346,17 @@ class VoiceEngine:
             self.logger.info(f"Editor Mode Selected Text: {selected_text}")
             self.logger.info(f"Final: {final_text}")
 
+            # Output text (type-first with clipboard fallback)
+            output_result = output_text(final_text)
+            self.logger.info(f"Output result: {output_result}")
+
             # Notify listeners
             if self.on_text_generated:
-                self.on_text_generated({"text": final_text, "type": "paste"})
+                self.on_text_generated({
+                    "text": final_text,
+                    "type": "paste",
+                    "output_method": output_result.get("method")
+                })
 
         except Exception as e:
             self.logger.error(f"Processing error: {e}")

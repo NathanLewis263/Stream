@@ -10,6 +10,11 @@ export interface StatusData {
   snippets: Record<string, string> | null;
 }
 
+export interface ClipboardToast {
+  visible: boolean;
+  text: string;
+}
+
 export const useStatus = () => {
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -18,9 +23,26 @@ export const useStatus = () => {
   const [hotkey, setHotkey] = useState("—");
   const [snippets, setSnippets] = useState<Record<string, string> | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [clipboardToast, setClipboardToast] = useState<ClipboardToast>({ visible: false, text: "" });
   const wsRef = useRef<WebSocket | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const statusPort = window.overlay?.statusPort || 3847;
+
+  const showClipboardToast = useCallback((text: string) => {
+    // Clear any existing timeout
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+
+    // Show toast
+    setClipboardToast({ visible: true, text });
+
+    // Auto-hide after 2 seconds
+    toastTimeoutRef.current = setTimeout(() => {
+      setClipboardToast({ visible: false, text: "" });
+    }, 2000);
+  }, []);
 
   const sendAction = useCallback((message: Record<string, string>) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -55,6 +77,13 @@ export const useStatus = () => {
             window.overlay?.updateTray?.(Boolean(data.recording));
           } else if (message.type === "audio_level") {
             setAudioLevel(message.data.level);
+          } else if (message.type === "text_generated") {
+            // Show toast when clipboard fallback was used
+            const { output_method, text } = message.data;
+            if (output_method === "clipboard") {
+              const preview = text.length > 50 ? text.slice(0, 50) + "..." : text;
+              showClipboardToast(preview);
+            }
           }
         } catch (e) {
           console.error("[useStatus] Error parsing message:", e);
@@ -90,5 +119,6 @@ export const useStatus = () => {
     statusPort,
     sendAction,
     audioLevel,
+    clipboardToast,
   };
 };
