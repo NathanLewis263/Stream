@@ -16,6 +16,9 @@ import ten_vad
 from commands import command_manager
 from text_output import output_text
 
+import torch
+from transformers import MoonshineForConditionalGeneration, AutoProcessor
+
 # Constants (moved from main.py)
 SAMPLE_RATE = 16000
 CHANNELS = 1
@@ -45,6 +48,16 @@ class VoiceEngine:
             self.logger.error("GROQ_API_KEY environment variable not found!")
         
         self.client = Groq(api_key=self.api_key) if self.api_key else None
+        
+        backend_dir = Path(__file__).resolve().parent
+        self.whisper_cli = backend_dir / "whisper.cpp" / "build" / "bin" / "whisper-cli"
+        self.whisper_model = backend_dir / "whisper.cpp" / "models" / "ggml-medium-q8_0.bin"
+        
+        if not self.whisper_cli.exists() or not self.whisper_model.exists():
+            self.logger.error("whisper.cpp CLI or model not found. Run make and download the model.")
+        else:
+            self.logger.info("whisper.cpp tools found successfully.")
+
         self.is_recording = False
         self.is_processing = False
         self.is_hands_free = False
@@ -242,21 +255,38 @@ class VoiceEngine:
                 self.logger.info("Discarded audio due to silence (ten-vad detection).")
                 return
 
-            # --- 1. Convert raw audio to WAV ---
-            wav_buffer = io.BytesIO()
-            wav.write(wav_buffer, SAMPLE_RATE, audio_data)
-            wav_buffer.seek(0)
+            # --- 1 & 2. Transcribe using local whisper.cpp ---
+            if not getattr(self, "whisper_cli", None) or not self.whisper_cli.exists():
+                self.logger.error("whisper.cpp CLI not found.")
+                return
+
+            self.logger.info("Transcribing audio with whisper.cpp locally...")
             
-            # --- 2. Transcribe using Groq Whisper ---
-            transcription = self.client.audio.transcriptions.create(
-                file=("audio.wav", wav_buffer.read()),
-                model="whisper-large-v3-turbo",
-                response_format="text",
-                language="en"
+            import tempfile
+            import uuid
+            
+            temp_wav_path = os.path.join(tempfile.gettempdir(), f"whisper_{uuid.uuid4().hex}.wav")
+            raw_text = ""
+            try:
+                wav.write(temp_wav_path, SAMPLE_RATE, audio_data)
                 
-            )
-            raw_text = str(transcription).strip()
-            self.logger.info(f"Raw: {raw_text}")
+                result = subprocess.run(
+                    [str(self.whisper_cli), "-m", str(self.whisper_model), "-f", temp_wav_path, "-nt", "-np", "-l", "auto", "-tr"],
+                    capture_output=True,
+                    text=True,
+                    check=False
+                )
+                
+                if result.returncode != 0:
+                    self.logger.error(f"whisper.cpp error: {result.stderr}")
+                    return
+                
+                raw_text = result.stdout.strip()
+            finally:
+                if os.path.exists(temp_wav_path):
+                    os.remove(temp_wav_path)
+            
+            self.logger.info(f"Raw (Whisper): {raw_text}")
             
             if not raw_text:
                 return
