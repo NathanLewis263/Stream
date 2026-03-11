@@ -51,7 +51,7 @@ class VoiceEngine:
         
         backend_dir = Path(__file__).resolve().parent
         self.whisper_cli = backend_dir / "whisper.cpp" / "build" / "bin" / "whisper-cli"
-        self.whisper_model = backend_dir / "whisper.cpp" / "models" / "ggml-medium-q8_0.bin"
+        self.whisper_model = backend_dir / "whisper.cpp" / "models" / "ggml-small.bin"
         
         if not self.whisper_cli.exists() or not self.whisper_model.exists():
             self.logger.error("whisper.cpp CLI or model not found. Run make and download the model.")
