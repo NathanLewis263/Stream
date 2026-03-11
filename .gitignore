@@ -6,3 +6,4 @@ overlay/dist-react
 user_data.json
 .vscode
 .DS_Store
+venv
