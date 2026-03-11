@@ -42,8 +42,12 @@ class CommandManager:
         self.data.setdefault("snippets", {})[key] = value
         self._save_data(self.data)
 
-    def remove_snippet(self, key):
-        del self.data["snippets"][key]
-        self._save_data(self.data)
+    def remove_snippet(self, key) -> bool:
+        """Remove a snippet by key. Returns True if removed, False if not found."""
+        if key in self.data.get("snippets", {}):
+            del self.data["snippets"][key]
+            self._save_data(self.data)
+            return True
+        return False
 
 command_manager = CommandManager()
