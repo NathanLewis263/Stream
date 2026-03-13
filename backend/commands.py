@@ -7,8 +7,8 @@ from pathlib import Path
 DATA_FILE = Path("user_data.json")
 
 DEFAULT_DATA = {
-    "snippets": {
-    }
+    "snippets": {},
+    "dictionary": {} 
 }
 
 class CommandManager:
@@ -20,7 +20,6 @@ class CommandManager:
         if not DATA_FILE.exists():
             self._save_data(DEFAULT_DATA)
             return DEFAULT_DATA
-        
         try:
             with open(DATA_FILE, "r") as f:
                 return json.load(f)
@@ -49,5 +48,36 @@ class CommandManager:
             self._save_data(self.data)
             return True
         return False
+
+    def get_dictionary(self) -> dict:
+        """Get the dictionary mapping incorrect → correct words."""
+        return self.data.get("dictionary", {})
+
+    def add_to_dictionary(self, incorrect: str, correct: str) -> bool:
+        """Add a correction to the dictionary. Returns True if added/updated."""
+        incorrect = incorrect.strip().lower()
+        correct = correct.strip()
+        if not incorrect or not correct:
+            return False
+        dictionary = self.data.setdefault("dictionary", {})
+        dictionary[incorrect] = correct
+        self._save_data(self.data)
+        return True
+
+    def remove_from_dictionary(self, incorrect: str) -> bool:
+        """Remove a correction from the dictionary. Returns True if removed, False if not found."""
+        incorrect = incorrect.strip().lower()
+        dictionary = self.data.get("dictionary", {})
+        if incorrect in dictionary:
+            del dictionary[incorrect]
+            self._save_data(self.data)
+            return True
+        return False
+
+    def get_keyterms(self) -> list:
+        """Get list of correct words for ElevenLabs keyterms (max 100)."""
+        dictionary = self.data.get("dictionary", {})
+        # Return unique correct words (values)
+        return list(set(dictionary.values()))[:100]
 
 command_manager = CommandManager()

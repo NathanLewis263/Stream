@@ -7,19 +7,17 @@ import subprocess
 import threading
 from typing import Optional
 from pathlib import Path
+from datetime import datetime
 
 import sounddevice as sd
 import numpy as np
-import scipy.io.wavfile as wav
-from groq import Groq
+from elevenlabs import ElevenLabs
+from google import genai
 import ten_vad
 from commands import command_manager
 from text_output import output_text
 
-import torch
-from transformers import MoonshineForConditionalGeneration, AutoProcessor
-
-# Constants (moved from main.py)
+# Constants
 SAMPLE_RATE = 16000
 CHANNELS = 1
 DTYPE = 'int16'
@@ -28,35 +26,39 @@ class VoiceEngine:
     """
     Manages the audio pipeline:
     1. Record Audio (sounddevice)
-    2. Transcribe (Groq Whisper)
-    3. Refine/Format (LLM)
+    2. Transcribe (ElevenLabs with keyterms)
+    3. Refine/Format (Gemini)
     4. Output (type-first with clipboard fallback)
     """
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        self.api_key = os.getenv("GROQ_API_KEY")
         self.lock = threading.RLock()
 
         # Initialize TEN VAD if available
         self.vad = None
         try:
             self.vad = ten_vad.TenVad()
+            self.logger.info("TEN VAD initialized successfully")
         except Exception as e:
             self.logger.error(f"Failed to initialize TEN VAD: {e}")
-        
-        if not self.api_key:
-            self.logger.error("GROQ_API_KEY environment variable not found!")
-        
-        self.client = Groq(api_key=self.api_key) if self.api_key else None
-        
-        backend_dir = Path(__file__).resolve().parent
-        self.whisper_cli = backend_dir / "whisper.cpp" / "build" / "bin" / "whisper-cli"
-        self.whisper_model = backend_dir / "whisper.cpp" / "models" / "ggml-small.bin"
-        
-        if not self.whisper_cli.exists() or not self.whisper_model.exists():
-            self.logger.error("whisper.cpp CLI or model not found. Run make and download the model.")
+
+        # Initialize ElevenLabs client for transcription
+        elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+        if not elevenlabs_api_key:
+            self.logger.error("ELEVENLABS_API_KEY environment variable not found!")
+        self.client = ElevenLabs(api_key=elevenlabs_api_key) if elevenlabs_api_key else None
+
+        # Initialize Gemini client for refinement
+        self.gemini_client = None
+        google_api_key = os.getenv("GOOGLE_API_KEY")
+        if google_api_key:
+            try:
+                self.gemini_client = genai.Client(api_key=google_api_key)
+                self.logger.info("Gemini client initialized successfully")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize Gemini client: {e}")
         else:
-            self.logger.info("whisper.cpp tools found successfully.")
+            self.logger.error("GOOGLE_API_KEY environment variable not found!")
 
         self.is_recording = False
         self.is_processing = False
@@ -77,7 +79,7 @@ class VoiceEngine:
                 "processing": self.is_processing,
                 "hands_free": self.is_hands_free,
                 "command_mode": self.is_command_mode,
-                "hotkey": "Ctrl Left", # TODO: Make dynamic
+                "hotkey": "Ctrl Left",  # TODO: Make dynamic
                 "snippets": command_manager.get_snippets()
             }
             try:
@@ -88,8 +90,6 @@ class VoiceEngine:
     def get_system_prompt(self):
         """Loads the AI persona/instructions from templates/system.md"""
         try:
-            # Resolves to absolute path relative to THIS file's location
-            # If this file is in backend/, then templates/ is sibling
             system_prompt_path = Path(__file__).resolve().parent / "templates" / "system.md"
 
             if not system_prompt_path.exists():
@@ -123,11 +123,11 @@ class VoiceEngine:
             if self.is_recording:
                 self.logger.warning("Already recording, ignoring start request")
                 return
-                
+
             self.logger.info("*** STARTING RECORDING ***")
             self.is_recording = True
             self.audio_data = []
-            
+
             try:
                 self.stream = sd.InputStream(
                     samplerate=SAMPLE_RATE,
@@ -148,9 +148,8 @@ class VoiceEngine:
             self.logger.warning(f"Audio status: {status}")
         if self.is_recording:
             self.audio_data.append(indata.copy())
-            # Calculate audio level (RMS normalized to 0-1, exaggerated for visibility)
+            # Calculate audio level (RMS normalized to 0-1)
             rms = np.sqrt(np.mean(indata.astype(np.float32) ** 2))
-            # More sensitive normalization for better visual feedback
             normalized = rms / 3000.0
             self.current_audio_level = float(normalized)
             if self.on_audio_level:
@@ -170,6 +169,7 @@ class VoiceEngine:
             self.is_recording = False
             self.current_audio_level = 0.0
             self.notify_status()
+
             try:
                 if hasattr(self, 'stream'):
                     self.stream.stop()
@@ -195,6 +195,7 @@ class VoiceEngine:
             self.current_audio_level = 0.0
             self.audio_data = []
             self.notify_status()
+
             try:
                 if hasattr(self, 'stream'):
                     self.stream.stop()
@@ -202,23 +203,22 @@ class VoiceEngine:
             except Exception as e:
                 self.logger.error(f"Error stopping stream: {e}")
 
-
     def _contains_speech(self, audio_data: np.ndarray) -> bool:
         """
         Checks for sustained, high-confidence speech using ten-vad.
-        This is tuned to be AGGRESSIVE (filter out background music/noise).
+        Tuned to filter out background music/noise.
         """
-        if not getattr(self, 'vad', None):
+        if not self.vad:
             return True
 
-        try: 
-            hop_size = 256 
+        try:
+            hop_size = 256
             consecutive = 0
-            min_consecutive = 8 
-            min_prob = 0.85      # require high VAD confidence
-            
+            min_consecutive = 8
+            min_prob = 0.85
+
             for i in range(0, len(audio_data) - hop_size, hop_size):
-                frame = audio_data[i:i+hop_size]
+                frame = audio_data[i:i + hop_size]
                 prob, is_speech = self.vad.process(frame)
 
                 if is_speech and prob >= min_prob:
@@ -227,16 +227,112 @@ class VoiceEngine:
                         return True
                 else:
                     consecutive = 0
-            print(f"No speech detected: {consecutive} frames")
+
+            self.logger.info(f"No speech detected: {consecutive} consecutive frames")
             return False
-            
+
         except Exception as e:
             self.logger.error(f"VAD check failed: {e}")
             return True
 
+    def _transcribe_audio(self, audio_data: np.ndarray) -> Optional[str]:
+        """Transcribe audio using ElevenLabs batch API with keyterms."""
+        if not self.client:
+            self.logger.error("ElevenLabs client not available")
+            return None
+
+        try:
+            import wave
+
+            # Convert numpy array to WAV format in memory
+            audio_bytes = audio_data.flatten().astype(np.int16).tobytes()
+            wav_buffer = io.BytesIO()
+            with wave.open(wav_buffer, 'wb') as wav_file:
+                wav_file.setnchannels(CHANNELS)
+                wav_file.setsampwidth(2)  # 16-bit = 2 bytes
+                wav_file.setframerate(SAMPLE_RATE)
+                wav_file.writeframes(audio_bytes)
+            wav_buffer.seek(0)
+            wav_buffer.name = "audio.wav"
+
+            # Get correct words as keyterms for ElevenLabs (max 100)
+            keyterms = command_manager.get_keyterms()
+
+            self.logger.info(f"Transcribing {len(audio_bytes)} bytes with {len(keyterms)} keyterms")
+
+            # Call ElevenLabs batch transcription API
+            result = self.client.speech_to_text.convert(
+                file=wav_buffer,
+                model_id="scribe_v2",
+                language_code="en",
+                tag_audio_events=False,
+                keyterms=keyterms if keyterms else None,
+            )
+
+            # Extract text from result
+            if hasattr(result, 'text'):
+                return result.text.strip()
+            elif isinstance(result, dict) and 'text' in result:
+                return result['text'].strip()
+            else:
+                self.logger.warning(f"Unexpected result format: {type(result)}")
+                return str(result)
+
+        except Exception as e:
+            self.logger.error(f"ElevenLabs transcription error: {e}")
+            return None
+
+    def _log_training_example(self, raw_text: str, refined_text: str, context: dict):
+        """Log input/output pairs for fine-tuning data collection."""
+        try:
+            log_path = Path(__file__).resolve().parent / "training_data.jsonl"
+            example = {
+                "timestamp": datetime.now().isoformat(),
+                "input": raw_text,
+                "output": refined_text,
+                "snippets": context.get("snippets", {}),
+                "dictionary": context.get("dictionary", {}),
+                "app_context": context.get("app_context", {}),
+            }
+            # Include selected_text for editor mode examples
+            if context.get("selected_text"):
+                example["selected_text"] = context["selected_text"]
+            with open(log_path, "a") as f:
+                f.write(json.dumps(example) + "\n")
+            self.logger.info(f"Logged training example to {log_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to log training example: {e}")
+
+    def _refine_text(self, raw_text: str, system_prompt: str, context: dict = None) -> str:
+        """Refine raw transcription using Gemini."""
+        if not self.gemini_client:
+            self.logger.warning("Gemini client not available, returning raw text")
+            return raw_text
+
+        try:
+            full_prompt = f"{system_prompt}\n\n---\n\nUser input:\n{raw_text}"
+            response = self.gemini_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=full_prompt,
+                config=genai.types.GenerateContentConfig(
+                    temperature=0.0,
+                )
+            )
+            refined = response.text.strip()
+
+            # Log for fine-tuning data collection
+            if context is None:
+                context = {}
+            self._log_training_example(raw_text, refined, context)
+
+            return refined
+        except Exception as e:
+            self.logger.error(f"Gemini refinement error: {e}")
+            return raw_text
+
     def process_audio(self, audio_data: Optional[np.ndarray], command_mode: bool = False):
         """
-        The main processing pipeline. 
+        The main processing pipeline.
         Runs in a separate thread to not block the UI/Hotkey listener.
         """
         if audio_data is None:
@@ -249,51 +345,25 @@ class VoiceEngine:
             if not self.client:
                 self.logger.error("No API Client available.")
                 return
-            
+
             # --- 0. Silence Detection (VAD) ---
             if not self._contains_speech(audio_data):
                 self.logger.info("Discarded audio due to silence (ten-vad detection).")
                 return
 
-            # --- 1 & 2. Transcribe using local whisper.cpp ---
-            if not getattr(self, "whisper_cli", None) or not self.whisper_cli.exists():
-                self.logger.error("whisper.cpp CLI not found.")
-                return
+            # --- 1. Transcribe using ElevenLabs ---
+            self.logger.info("Transcribing audio with ElevenLabs...")
+            raw_text = self._transcribe_audio(audio_data)
 
-            self.logger.info("Transcribing audio with whisper.cpp locally...")
-            
-            import tempfile
-            import uuid
-            
-            temp_wav_path = os.path.join(tempfile.gettempdir(), f"whisper_{uuid.uuid4().hex}.wav")
-            raw_text = ""
-            try:
-                wav.write(temp_wav_path, SAMPLE_RATE, audio_data)
-                
-                result = subprocess.run(
-                    [str(self.whisper_cli), "-m", str(self.whisper_model), "-f", temp_wav_path, "-nt", "-np", "-l", "auto", "-tr"],
-                    capture_output=True,
-                    text=True,
-                    check=False
-                )
-                
-                if result.returncode != 0:
-                    self.logger.error(f"whisper.cpp error: {result.stderr}")
-                    return
-                
-                raw_text = result.stdout.strip()
-            finally:
-                if os.path.exists(temp_wav_path):
-                    os.remove(temp_wav_path)
-            
-            self.logger.info(f"Raw (Whisper): {raw_text}")
-            
+            self.logger.info(f"Raw (ElevenLabs): {raw_text}")
+
             if not raw_text:
                 return
 
-            # --- 3. Refine/Format using LLM ---
+            # --- 2. Refine/Format using Gemini ---
             system_prompt = self.get_system_prompt()
             system_prompt += f"\n\n### Snippet Context\nSnippets: {command_manager.get_snippets()}"
+            system_prompt += f"\nDictionary: {command_manager.get_dictionary()}"
 
             # Add active UI context via subprocess to avoid PyObjC caching bugs
             active_ctx = self._get_active_context()
@@ -305,18 +375,18 @@ class VoiceEngine:
                 if 'title' in active_ctx:
                     system_prompt += f"\nBrowser Tab Title: {active_ctx['title']}"
 
-            completion = self.client.chat.completions.create(
-                model="openai/gpt-oss-120b",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": raw_text}
-                ],
-                temperature=0.0
-            )
-            final_text = completion.choices[0].message.content.strip()
+            # Context for training data logging
+            training_context = {
+                "snippets": command_manager.get_snippets(),
+                "dictionary": command_manager.get_dictionary(),
+                "app_context": active_ctx,
+            }
+
+            final_text = self._refine_text(raw_text, system_prompt, training_context)
             self.logger.info(f"Final: {final_text}")
 
-            # --- 4. Output Text (type-first with clipboard fallback) ---
+            # --- 3. Output Text (type-first with clipboard fallback) ---
+            output_result = None
             if not command_mode:
                 output_result = output_text(final_text)
                 self.logger.info(f"Output result: {output_result}")
@@ -327,7 +397,7 @@ class VoiceEngine:
                     "text": final_text,
                     "type": "dictation",
                     "command_mode": command_mode,
-                    "output_method": output_result.get("method") if not command_mode else None
+                    "output_method": output_result.get("method") if output_result else None
                 })
 
         except Exception as e:
@@ -337,22 +407,21 @@ class VoiceEngine:
             self.notify_status()
 
     def process_editor_command(self, selected_text: str, instruction: str):
-        """
-        Processes a text-based command on selected text.
-        """
+        """Processes a text-based command on selected text."""
         self.is_processing = True
         self.notify_status()
         try:
-            if not self.client:
-                self.logger.error("No API Client available.")
+            if not self.gemini_client:
+                self.logger.error("No Gemini client available.")
                 return
-            
+
             if not instruction or not selected_text:
                 return
 
-            # --- Refine/Format using LLM ---
+            # --- Refine/Format using Gemini ---
             system_prompt = self.get_system_prompt()
             system_prompt += f"\n\n### Edit Context\nSelected Text: {selected_text}\nSnippets: {command_manager.get_snippets()}"
+            system_prompt += f"\nDictionary: {command_manager.get_dictionary()}"
 
             # Add active UI context via subprocess to avoid PyObjC caching bugs
             active_ctx = self._get_active_context()
@@ -364,15 +433,15 @@ class VoiceEngine:
                 if 'title' in active_ctx:
                     system_prompt += f"\nBrowser Tab Title: {active_ctx['title']}"
 
-            completion = self.client.chat.completions.create(
-                model="openai/gpt-oss-120b",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": instruction}
-                ],
-                temperature=0.0
-            )
-            final_text = completion.choices[0].message.content.strip()
+            # Context for training data logging
+            training_context = {
+                "snippets": command_manager.get_snippets(),
+                "dictionary": command_manager.get_dictionary(),
+                "app_context": active_ctx,
+                "selected_text": selected_text,
+            }
+
+            final_text = self._refine_text(instruction, system_prompt, training_context)
             self.logger.info(f"Editor Mode Selected Text: {selected_text}")
             self.logger.info(f"Final: {final_text}")
 

@@ -7,3 +7,5 @@ user_data.json
 .vscode
 .DS_Store
 venv
+training_data.jsonl
+convert_training_data.py

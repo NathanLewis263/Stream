@@ -25,8 +25,12 @@ command_mode_active = False
 def main():
     global command_mode_active
 
-    if not os.getenv("GROQ_API_KEY"):
-        print("\n❌ CRITICAL: GROQ_API_KEY is missing from .env\n")
+    if not os.getenv("ELEVENLABS_API_KEY"):
+        print("\n❌ CRITICAL: ELEVENLABS_API_KEY is missing from .env\n")
+        return
+
+    if not os.getenv("GOOGLE_API_KEY"):
+        print("\n❌ CRITICAL: GOOGLE_API_KEY is missing from .env\n")
         return
 
     engine = VoiceEngine()

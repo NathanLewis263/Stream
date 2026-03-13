@@ -1,33 +1,34 @@
-Stream is a headless voice dictation tool that records your speech, transcribes it with **OpenAI's Whisper large v3 turbo-**, refines it with **GPT OSS 120B** for perfect grammar and formatting, and types the result directly into whatever app you're using — VS Code, Slack, Notes, your browser, anything.
+Stream is a headless voice dictation tool that records your speech, transcribes it with **ElevenLabs Scribe**, refines it with **Gemini 2.5 Flash** for perfect grammar and formatting, and types the result directly into whatever app you're using — VS Code, Slack, Notes, your browser, anything.
 
 It runs as a transparent Electron overlay with a Python backend. No windows to switch to. No copy-paste. Just hold a hotkey, speak, and release.
 
 ## How It Works
 
 ```
-Voice → Microphone → Groq Whisper (transcription) → GPT OSS 120B (refinement) → Clipboard → Paste
+Voice → Microphone → ElevenLabs Scribe (transcription) → Gemini Flash (refinement) → Type/Paste
 ```
 
 1. **Record** — Hold `Ctrl + Option` to start recording via `sounddevice`.
 2. **Detect** — `ten-vad` filters out background noise and silence.
-3. **Transcribe** — Audio is sent to Groq's Whisper endpoint for fast transcription.
-4. **Refine** — Raw text is cleaned by GPT OSS 120B (grammar, punctuation, formatting).
-5. **Paste** — The Electron overlay writes the text into your active app via `nut.js`.
+3. **Transcribe** — Audio is sent to ElevenLabs Scribe API with custom keyterms.
+4. **Refine** — Raw text is cleaned by Gemini 2.5 Flash (grammar, punctuation, formatting) using your personal dictionary.
+5. **Type** — Text is typed directly via CGEvent (macOS) with clipboard fallback.
 
 ## Features
 
-| Feature              | Description                                                                                   |
-| -------------------- | --------------------------------------------------------------------------------------------- |
-| **Ghost Typing**     | Text appears in your active app — no window switching                                         |
-| **Push-to-Talk**     | Hold `Ctrl + Option` to record, release to transcribe                                         |
-| **Hands-Free Mode**  | Toggle with `Ctrl + Option + Space` for continuous dictation                                  |
-| **Smart Formatting** | Auto-fixes grammar, punctuation, markdown, and code blocks                                    |
-| **Command Mode**     | Hold `Ctrl + Option + Cmd` to send your voice query to Perplexity, ChatGPT, or Grok           |
-| **Editor Mode**      | Select text + command mode → the LLM rewrites your selection based on your spoken instruction |
-| **Smart Dictionary** | Personal snippets that auto-expand (e.g., say "my email" → `you@example.com`)                 |
-| **Speech Detection** | `ten-vad` filters silence and background noise to prevent hallucinations                      |
-| **System Tray**      | Manage settings, snippets, and preferred AI from the tray menu                                |
-| **WebSocket Sync**   | Real-time communication between the Python backend and Electron frontend                      |
+| Feature                  | Description                                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------- |
+| **Ghost Typing**         | Text appears in your active app — no window switching                                         |
+| **Push-to-Talk**         | Hold `Ctrl + Option` to record, release to transcribe                                         |
+| **Hands-Free Mode**      | Toggle with `Ctrl + Option + Space` for continuous dictation                                  |
+| **Smart Formatting**     | Auto-fixes grammar, punctuation, markdown, and code blocks                                    |
+| **Command Mode**         | Hold `Ctrl + Option + Cmd` to send your voice query to Perplexity, ChatGPT, or Grok           |
+| **Editor Mode**          | Select text + command mode → the LLM rewrites your selection based on your spoken instruction |
+| **Personal Dictionary**  | Map transcription errors to correct words (e.g., "selana" → "Solana", "pie torch" → "PyTorch")|
+| **Snippets**             | Auto-expand placeholders (e.g., say "my email" → `you@example.com`)                           |
+| **Speech Detection**     | `ten-vad` filters silence and background noise to prevent hallucinations                      |
+| **System Tray**          | Manage settings, snippets, and dictionary from the tray menu                                  |
+| **WebSocket Sync**       | Real-time communication between the Python backend and Electron frontend                      |
 
 ## Architecture
 
@@ -36,12 +37,12 @@ Voice → Microphone → Groq Whisper (transcription) → GPT OSS 120B (refineme
 │     Electron Overlay          │◄──────────────────────────────────────┐
 │  • Transparent fullscreen     │                                      │
 │  • Hotkey listener (uIOhook)  │     ┌────────────────────────────┐   │
-│  • Ghost paste (nut.js)       │     │    Python Backend           │   │
+│  • Paste trigger (nut.js)     │     │    Python Backend           │   │
 │  • System tray (React)        │────►│  • FastAPI + WebSocket      │   │
-│  • Command routing            │     │  • Groq Whisper             │   │
-└───────────────────────────────┘     │  • GPT OSS 120B             │   │
+│  • Command routing            │     │  • ElevenLabs Scribe (STT)  │   │
+└───────────────────────────────┘     │  • Gemini Flash (refine)    │   │
                                       │  • sounddevice + ten-vad    │───┘
-                                      │  • Smart dictionary         │
+                                      │  • Dictionary + Snippets    │
                                       └────────────────────────────┘
 ```
 
@@ -50,7 +51,8 @@ Voice → Microphone → Groq Whisper (transcription) → GPT OSS 120B (refineme
 - **macOS** (required — uses Accessibility APIs and `portaudio`)
 - **Python 3.10+**
 - **Node.js 18+**
-- **Groq API Key** — [Get one here](https://console.groq.com/keys)
+- **ElevenLabs API Key** — [Get one here](https://elevenlabs.io/app/settings/api-keys)
+- **Google API Key** — [Get one here](https://aistudio.google.com/apikey)
 - **portaudio** — required for microphone access:
   ```bash
   brew install portaudio
@@ -75,7 +77,8 @@ cd ..
 Create a `.env` file in the project root:
 
 ```
-GROQ_API_KEY=gsk_your_key_here
+ELEVENLABS_API_KEY=your_elevenlabs_key_here
+GOOGLE_API_KEY=your_google_key_here
 ```
 
 ## Usage
@@ -114,9 +117,9 @@ When you activate command mode (`Ctrl + Option + Cmd`), Stream checks if you hav
 audioToTextFormat/
 ├── backend/
 │   ├── main.py              # Entry point — starts engine + API server
-│   ├── voice_engine.py      # Audio pipeline: record → transcribe → refine → output
+│   ├── voice_engine.py      # Audio pipeline: record → ElevenLabs → Gemini → output
 │   ├── server.py            # FastAPI + WebSocket server
-│   ├── commands.py           # Smart dictionary manager
+│   ├── commands.py          # Snippets and dictionary manager
 │   ├── templates/
 │   │   └── system.md        # LLM system prompt for text refinement
 │   └── requirements.txt
