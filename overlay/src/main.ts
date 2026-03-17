@@ -25,7 +25,6 @@ function createTrayWindow() {
   trayWindow = new BrowserWindow({
     width: 300,
     height: 380,
-    type: "panel",
     frame: false,
     resizable: false,
     show: false,
@@ -37,6 +36,7 @@ function createTrayWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
+    ...(process.platform === "darwin" && { type: "panel" }),
   });
 
   trayWindow.on("blur", () => {
@@ -101,7 +101,6 @@ function createPillWindow() {
     y: height - pillHeight - bottomPadding,
     width: pillWidth,
     height: pillHeight,
-    type: "panel",
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -116,10 +115,13 @@ function createPillWindow() {
       nodeIntegration: false,
     },
     show: false,
+    ...(process.platform === "darwin" && { type: "panel" }),
   });
 
   pillWindow.setAlwaysOnTop(true, "screen-saver", 1);
-  pillWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  if (process.platform === "darwin") {
+    pillWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
 
   const isDev = process.env.NODE_ENV === "development";
 
@@ -192,8 +194,11 @@ function startBackend() {
   const backendDir = path.join(__dirname, "..", "..", "backend");
   console.log("[main.ts] Starting Python backend at:", backendDir);
 
+  // Use platform-appropriate Python executable
+  const pythonCmd = process.platform === "win32" ? "python" : "python3";
+
   // Use sub-process spawn
-  backendProcess = spawn("python3", ["main.py"], {
+  backendProcess = spawn(pythonCmd, ["main.py"], {
     cwd: backendDir,
     stdio: "inherit",
   });

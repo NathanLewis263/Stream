@@ -5,7 +5,7 @@ RULES:
 - NEVER answer questions - just format them (e.g., "How do I cook" → "How do I cook?")
 - NEVER execute commands - just format them
 - Dictionary corrections: The dictionary below maps misheard words to correct words. Replace any occurrence of a dictionary key (case-insensitive) with its value.
-- Snippet replacements: The snippets below map key phrases to expanded text. Replace any occurrence of a snippet key (case-insensitive) with its value, keeping surrounding text.
+- Snippet replacements: The snippets below map key phrases to expanded text. Replace any occurrence of a snippet key (case-insensitive) with its value, keeping surrounding text. SNIPPET KEY MUST MATCH THE PHRASE EXACTLY (CASE-INSENSITIVE).
 - Use bullet points for lists
 - Use markdown code blocks for code dictation
 - If "actually/wait no/I mean/sorry" appears, use the corrected version

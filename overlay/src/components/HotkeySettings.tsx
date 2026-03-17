@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from "react";
 import { useHotkeys, CapturedKeyData } from "../hooks/useHotkeys";
 
 // Reserved macOS shortcuts (display names for checking)
-const RESERVED_SHORTCUTS = new Set([
+const MAC_RESERVED_SHORTCUTS = new Set([
   "Cmd + C", "Cmd + V", "Cmd + X", "Cmd + Z", "Cmd + Shift + Z",
   "Cmd + A", "Cmd + Q", "Cmd + W", "Cmd + R", "Cmd + T", "Cmd + S",
   "Cmd + P", "Cmd + N", "Cmd + M", "Cmd + H", "Cmd + F", "Cmd + G",
@@ -10,18 +10,33 @@ const RESERVED_SHORTCUTS = new Set([
   "Cmd + B", "Cmd + I", "Cmd + U",
 ]);
 
+// Reserved Windows shortcuts
+const WIN_RESERVED_SHORTCUTS = new Set([
+  "Ctrl + C", "Ctrl + V", "Ctrl + X", "Ctrl + Z", "Ctrl + Shift + Z",
+  "Ctrl + A", "Ctrl + W", "Ctrl + R", "Ctrl + T", "Ctrl + S",
+  "Ctrl + P", "Ctrl + N", "Ctrl + F", "Ctrl + G",
+  "Ctrl + B", "Ctrl + I", "Ctrl + U",
+  "Alt + Tab", "Alt + F4", "Win + D", "Win + E", "Win + L", "Win + R",
+  "Ctrl + Alt + Delete", "Ctrl + Shift + Esc",
+]);
+
 // Modifier keycodes (macOS)
 const MAC_MODIFIER_KEYCODES = new Set([
   0x3f, // fn
-  0x3b,
-  0x3e, // Ctrl left/right
-  0x3a,
-  0x3d, // Option left/right
-  0x37,
-  0x36, // Cmd left/right
-  0x38,
-  0x3c, // Shift left/right
+  0x3b, 0x3e, // Ctrl left/right
+  0x3a, 0x3d, // Option left/right
+  0x37, 0x36, // Cmd left/right
+  0x38, 0x3c, // Shift left/right
   0x39, // CapsLock
+]);
+
+// Modifier VK codes (Windows)
+const WIN_MODIFIER_VK_CODES = new Set([
+  0x10, 0xa0, 0xa1, // Shift, LShift, RShift
+  0x11, 0xa2, 0xa3, // Ctrl, LCtrl, RCtrl
+  0x12, 0xa4, 0xa5, // Alt, LAlt, RAlt
+  0x5b, 0x5c, // LWin, RWin
+  0x14, // CapsLock
 ]);
 
 interface ValidationResult {
@@ -29,16 +44,16 @@ interface ValidationResult {
   error?: string;
 }
 
-function validateShortcut(data: CapturedKeyData): ValidationResult {
+function validateShortcut(data: CapturedKeyData, platform: string): ValidationResult {
   // Rule 1: 3 keys or fewer
   if (data.keyCount > 3) {
     return { valid: false, error: "Maximum 3 keys allowed" };
   }
 
-  // Rule 2: Must include at least one modifier or special key
-  const hasModifier = data.keycodes.some((kc: number) =>
-    MAC_MODIFIER_KEYCODES.has(kc)
-  );
+  // Rule 2: Must include at least one modifier or special key (platform-aware)
+  const modifierCodes = platform === "win32" ? WIN_MODIFIER_VK_CODES : MAC_MODIFIER_KEYCODES;
+  const hasModifier = data.keycodes.some((kc: number) => modifierCodes.has(kc));
+
   // Check if it's a function key (F1-F12) or other special key
   const isFunctionKey = data.displayName.match(/^F\d+$/);
   const isSpecialKey = ["Space", "Tab", "Esc", "CapsLock"].some(
@@ -49,8 +64,9 @@ function validateShortcut(data: CapturedKeyData): ValidationResult {
     return { valid: false, error: "Must include a modifier or special key" };
   }
 
-  // Rule 3: Not a reserved system shortcut
-  if (RESERVED_SHORTCUTS.has(data.displayName)) {
+  // Rule 3: Not a reserved system shortcut (platform-aware)
+  const reservedShortcuts = platform === "win32" ? WIN_RESERVED_SHORTCUTS : MAC_RESERVED_SHORTCUTS;
+  if (reservedShortcuts.has(data.displayName)) {
     return { valid: false, error: "This is a reserved system shortcut" };
   }
 
@@ -272,10 +288,10 @@ export const HotkeySettings = () => {
   // Validate captured data when it changes
   useEffect(() => {
     if (capturedData && capturingAction) {
-      const validation = validateShortcut(capturedData);
+      const validation = validateShortcut(capturedData, platform);
       setValidationError(validation.valid ? null : validation.error || "Invalid shortcut");
     }
-  }, [capturedData, capturingAction]);
+  }, [capturedData, capturingAction, platform]);
 
   const getKeyDisplay = useCallback((actionName: string): string => {
     if (!hotkeys) return "fn";
