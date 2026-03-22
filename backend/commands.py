@@ -15,6 +15,22 @@ class CommandManager:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.data = self._load_data()
+        self._normalize_dictionary_keys()
+
+    def _normalize_dictionary_keys(self):
+        """Ensure dictionary keys are lowercased to match add_to_dictionary / remove lookups."""
+        d = self.data.get("dictionary") or {}
+        if not d:
+            return
+        new_d = {}
+        for k, v in d.items():
+            lk = k.strip().lower() if isinstance(k, str) else k
+            if not lk:
+                continue
+            new_d[lk] = v
+        if new_d != d:
+            self.data["dictionary"] = new_d
+            self._save_data(self.data)
 
     def _load_data(self):
         if not DATA_FILE.exists():
@@ -66,12 +82,17 @@ class CommandManager:
 
     def remove_from_dictionary(self, incorrect: str) -> bool:
         """Remove a correction from the dictionary. Returns True if removed, False if not found."""
-        incorrect = incorrect.strip().lower()
+        target = incorrect.strip().lower()
         dictionary = self.data.get("dictionary", {})
-        if incorrect in dictionary:
-            del dictionary[incorrect]
+        if target in dictionary:
+            del dictionary[target]
             self._save_data(self.data)
             return True
+        for k in list(dictionary.keys()):
+            if isinstance(k, str) and k.strip().lower() == target:
+                del dictionary[k]
+                self._save_data(self.data)
+                return True
         return False
 
     def get_keyterms(self) -> list:

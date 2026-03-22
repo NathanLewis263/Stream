@@ -218,7 +218,23 @@ def run_status_server(engine_ref):
         command_manager.remove_snippet(key)
         engine_ref.notify_status()
         return {"status": "ok"}
-    
+
+    @app.get("/dictionary")
+    def get_dictionary():
+        return {"dictionary": command_manager.get_dictionary()}
+
+    @app.post("/dictionary")
+    def add_dictionary_entry(item: Item):
+        success = command_manager.add_to_dictionary(item.key, item.value)
+        engine_ref.notify_status()
+        return {"status": "ok" if success else "error"}
+
+    @app.delete("/dictionary/{key}")
+    def delete_dictionary_entry(key: str):
+        success = command_manager.remove_from_dictionary(key)
+        engine_ref.notify_status()
+        return {"status": "ok" if success else "not_found"}
+
     uvicorn.run(app, host="127.0.0.1", port=STATUS_SERVER_PORT, log_level="warning")
 
 
