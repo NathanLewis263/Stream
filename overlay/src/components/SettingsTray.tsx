@@ -3,6 +3,7 @@ import { useStatus } from "../hooks/useStatus";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { DictationSettings } from "./DictationSettings";
 import { DictionarySettings } from "./DictionarySettings";
+import { HotkeyDisplay } from "./HotkeyDisplay";
 import { SettingsList } from "./SettingsList";
 
 const SettingsTray = () => {
@@ -99,10 +100,22 @@ const SettingsTray = () => {
 
       {/* Tabs */}
       <Tabs
-        defaultValue="dictation"
+        defaultValue="hotkeys"
         className="relative flex-1 flex flex-col overflow-hidden min-h-0"
       >
-        <TabsList className="grid w-full grid-cols-3 p-1 rounded-lg bg-[#111114] border border-white/[0.04] shrink-0 gap-0.5">
+        <TabsList className="grid w-full grid-cols-4 p-1 rounded-lg bg-[#111114] border border-white/[0.04] shrink-0 gap-0.5">
+          <TabsTrigger
+            value="hotkeys"
+            className="
+              text-[11px] font-medium text-zinc-400 rounded-md py-1.5 px-1
+              transition-all duration-200
+              data-[state=active]:bg-[#4d65ff]/10 data-[state=active]:text-[#4d65ff]
+              data-[state=active]:border data-[state=active]:border-[#4d65ff]/20
+              hover:text-zinc-200
+            "
+          >
+            Hotkeys
+          </TabsTrigger>
           <TabsTrigger
             value="dictation"
             className="
@@ -142,6 +155,12 @@ const SettingsTray = () => {
         </TabsList>
 
         <TabsContent
+          value="hotkeys"
+          className="flex-1 mt-3 min-h-0 overflow-y-auto overflow-x-hidden animate-[fade-in_0.2s_ease-out]"
+        >
+          <HotkeyDisplay />
+        </TabsContent>
+        <TabsContent
           value="dictation"
           className="flex-1 mt-3 min-h-0 overflow-y-auto overflow-x-hidden animate-[fade-in_0.2s_ease-out]"
         >
@@ -151,7 +170,7 @@ const SettingsTray = () => {
           value="snippets"
           className="flex-1 mt-3 min-h-0 overflow-y-auto overflow-x-hidden animate-[fade-in_0.2s_ease-out]"
         >
-          <SettingsList items={snippets} statusPort={statusPort} />
+          <SettingsList items={snippets} statusPort={statusPort} compact />
         </TabsContent>
         <TabsContent
           value="dictionary"
