@@ -10,88 +10,107 @@ const PillOverlay = () => {
     sendAction,
     audioLevel,
     clipboardToast,
+    errorToast,
   } = useStatus();
-  const [audioLevels, setAudioLevels] = useState<number[]>(Array(12).fill(0.1));
+  const [audioLevels, setAudioLevels] = useState<number[]>(Array(8).fill(0.15));
   const [isHovered, setIsHovered] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
   const isMac = navigator.userAgent.toLowerCase().includes("mac");
 
-  // Update waveform with real audio levels when recording
+  const showPill = recording || processing;
+  const showToast = clipboardToast.visible;
+  const showError = errorToast.visible;
+
+  // Animate in/out
+  useEffect(() => {
+    if (showPill || showToast || showError) {
+      requestAnimationFrame(() => setIsVisible(true));
+    } else {
+      setIsVisible(false);
+    }
+  }, [showPill, showToast, showError]);
+
   useEffect(() => {
     if (recording && audioLevel > 0) {
       setAudioLevels((prev) => {
         const newLevels = [...prev];
         newLevels.shift();
-        newLevels.push(Math.min(1.0, audioLevel * 1.5 + 0.3));
+        newLevels.push(Math.min(1.0, audioLevel * 1.8 + 0.2));
         return newLevels;
       });
     }
   }, [recording, audioLevel]);
 
-  // Animate waveform for processing state
   useEffect(() => {
     if (!processing) {
-      if (!recording) setAudioLevels(Array(12).fill(0.1));
+      if (!recording) setAudioLevels(Array(8).fill(0.15));
       return;
     }
     const interval = setInterval(() => {
-      const time = Date.now() / 200;
+      const time = Date.now() / 180;
       setAudioLevels((prev) =>
-        prev.map((_, i) => 0.3 + 0.3 * Math.sin(time + i * 0.5)),
+        prev.map((_, i) => 0.25 + 0.35 * Math.sin(time + i * 0.6)),
       );
-    }, 50);
+    }, 40);
     return () => clearInterval(interval);
   }, [processing, recording]);
 
-  // Show pill during recording/processing, or show toast when clipboard used
-  const showPill = recording || processing;
-  const showToast = clipboardToast.visible;
+  if (!showPill && !showToast && !showError) return null;
 
-  if (!showPill && !showToast) return null;
-
-  let colorTheme = {
-    border: "border-red-500",
-    bg: "bg-red-500",
-    text: "text-red-500",
+  const colors = {
+    recording: { accent: "#ef4444", glow: "rgba(239, 68, 68, 0.4)" },
+    processing: { accent: "#4d65ff", glow: "rgba(77, 101, 255, 0.4)" },
+    command: { accent: "#8b5cf6", glow: "rgba(139, 92, 246, 0.4)" },
+    handsFree: { accent: "#0d9488", glow: "rgba(13, 148, 136, 0.4)" },
   };
-  if (processing) {
-    colorTheme = {
-      border: "border-amber-500",
-      bg: "bg-amber-500",
-      text: "text-amber-500",
-    };
-  } else if (commandMode) {
-    colorTheme = {
-      border: "border-indigo-500",
-      bg: "bg-indigo-500",
-      text: "text-indigo-500",
-    };
-  } else if (handsFree) {
-    colorTheme = {
-      border: "border-emerald-500",
-      bg: "bg-emerald-500",
-      text: "text-emerald-500",
-    };
-  }
+
+  let theme = colors.recording;
+  if (processing) theme = colors.processing;
+  else if (commandMode) theme = colors.command;
+  else if (handsFree) theme = colors.handsFree;
 
   const getStatusText = () => {
     if (processing) return "Processing";
-    if (isHovered) return "Discard";
-    if (commandMode) return "Command Mode";
+    if (isHovered) return "Cancel";
+    if (commandMode) return "Command";
     if (handsFree) return "Hands-Free";
     return "Recording";
   };
 
   return (
-    <div className="fixed inset-0 flex items-end justify-center pb-8 pointer-events-none">
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "center",
+        paddingBottom: "28px",
+        pointerEvents: "none",
+      }}
+    >
       {/* Recording/Processing Pill */}
       {showPill && (
         <div
-          className={`
-            pointer-events-auto flex items-center gap-3 px-4 py-2.5 rounded-full
-            bg-zinc-900/90 border-2 ${colorTheme.border}
-            transition-all duration-300 ease-out cursor-pointer select-none
-            ${isHovered ? "scale-100" : "scale-95"}
-          `}
+          style={{
+            pointerEvents: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "8px 14px 8px 12px",
+            borderRadius: "9999px",
+            background: "linear-gradient(135deg, rgba(17, 17, 20, 0.95) 0%, rgba(10, 10, 12, 0.98) 100%)",
+            backdropFilter: "blur(20px)",
+            border: `1.5px solid ${theme.accent}`,
+            boxShadow: `0 0 20px ${theme.glow}, 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05)`,
+            cursor: recording ? "pointer" : "default",
+            userSelect: "none",
+            opacity: isVisible ? 1 : 0,
+            transform: isVisible
+              ? isHovered ? "translateY(0) scale(1.02)" : "translateY(0) scale(1)"
+              : "translateY(8px) scale(0.95)",
+            transition: "all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)",
+          }}
           onMouseEnter={() => {
             setIsHovered(true);
             window.overlay?.setIgnoreMouseEvents?.(false);
@@ -100,95 +119,188 @@ const PillOverlay = () => {
             setIsHovered(false);
             window.overlay?.setIgnoreMouseEvents?.(true);
           }}
-          onClick={
-            recording ? () => sendAction({ action: "discard" }) : undefined
-          }
+          onClick={recording ? () => sendAction({ action: "discard" }) : undefined}
         >
+          {/* Pulsing dot */}
           <div
-            className={`w-2 h-2 rounded-full ${recording ? `${colorTheme.bg} animate-pulse` : colorTheme.bg}`}
-          />
+            style={{
+              position: "relative",
+              width: "8px",
+              height: "8px",
+              flexShrink: 0,
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                borderRadius: "9999px",
+                backgroundColor: theme.accent,
+                animation: recording ? "pulse 1.5s ease-in-out infinite" : "none",
+              }}
+            />
+            {recording && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: "-4px",
+                  borderRadius: "9999px",
+                  backgroundColor: theme.accent,
+                  opacity: 0.3,
+                  animation: "ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite",
+                }}
+              />
+            )}
+          </div>
 
-          <div className="flex items-center gap-[3px] h-6">
+          {/* Waveform */}
+          <div style={{ display: "flex", alignItems: "center", gap: "2px", height: "20px" }}>
             {audioLevels.map((level, i) => (
               <div
                 key={i}
-                className={`w-[3px] rounded-full ${colorTheme.bg} transition-all duration-75`}
                 style={{
-                  height: `${Math.max(4, level * 24)}px`,
-                  opacity: 0.6 + level * 0.4,
+                  width: "2.5px",
+                  borderRadius: "9999px",
+                  backgroundColor: theme.accent,
+                  height: `${Math.max(4, level * 20)}px`,
+                  opacity: 0.5 + level * 0.5,
+                  transition: "height 60ms ease-out, opacity 60ms ease-out",
                 }}
               />
             ))}
           </div>
 
-          <div className="flex items-center gap-2 ml-1">
-            {recording ? (
-              <>
-                <span className={`${colorTheme.text} text-sm font-medium`}>
-                  {getStatusText()}
-                </span>
-                {isHovered && (
-                  <svg
-                    className={`w-4 h-4 ${colorTheme.text}`}
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                )}
-              </>
-            ) : (
-              <span className={`${colorTheme.text} text-sm font-medium`}>
-                {getStatusText()}
-              </span>
-            )}
-          </div>
+          {/* Status text */}
+          <span
+            style={{
+              color: isHovered && recording ? "#fca5a5" : "#e4e4e7",
+              fontSize: "13px",
+              fontWeight: 500,
+              letterSpacing: "-0.01em",
+              fontFamily: "'Inter', system-ui, sans-serif",
+              transition: "color 0.15s ease",
+            }}
+          >
+            {getStatusText()}
+          </span>
+
+          {/* Cancel icon on hover */}
+          {recording && isHovered && (
+            <svg
+              style={{
+                width: "14px",
+                height: "14px",
+                color: "#fca5a5",
+                marginLeft: "-4px",
+              }}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          )}
         </div>
       )}
 
-      {/* Clipboard Toast */}
-      {showToast && !showPill && (
+      {showError && !showPill && (
         <div
           className={`
-            pointer-events-auto flex items-center gap-3 px-3 py-2 rounded-full
-            bg-zinc-900/90 border-2 border-zinc-700/50
+            pointer-events-auto flex items-center gap-3 px-3 py-2 rounded-full max-w-[min(90vw,420px)]
+            bg-zinc-900/90 border-2 border-amber-500/40
             shadow-lg backdrop-blur-sm
             animate-in fade-in slide-in-from-bottom-4 duration-300
           `}
         >
-          {/* Clipboard Icon */}
-          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+          <span className="text-amber-400 text-sm leading-snug">{errorToast.text}</span>
+        </div>
+      )}
+
+      {/* Clipboard Toast */}
+      {showToast && !showPill && !showError && (
+        <div
+          style={{
+            pointerEvents: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "10px 14px",
+            borderRadius: "14px",
+            background: "linear-gradient(135deg, rgba(17, 17, 20, 0.95) 0%, rgba(10, 10, 12, 0.98) 100%)",
+            backdropFilter: "blur(20px)",
+            border: "1px solid rgba(77, 101, 255, 0.3)",
+            boxShadow: "0 0 20px rgba(77, 101, 255, 0.15), 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+            opacity: isVisible ? 1 : 0,
+            transform: isVisible ? "translateY(0) scale(1)" : "translateY(8px) scale(0.95)",
+            transition: "all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)",
+          }}
+        >
+          {/* Icon */}
+          <div
+            style={{
+              flexShrink: 0,
+              width: "28px",
+              height: "28px",
+              borderRadius: "8px",
+              background: "rgba(77, 101, 255, 0.15)",
+              border: "1px solid rgba(77, 101, 255, 0.2)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
             <svg
-              className="w-4 h-4 text-blue-400"
+              style={{ width: "14px", height: "14px", color: "#4d65ff" }}
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
               viewBox="0 0 24 24"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-              />
-            </svg> 
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
           </div>
 
-          <div className="flex flex-col pr-2">
-            <span className="text-zinc-200 text-sm font-medium leading-tight whitespace-nowrap">
+          {/* Text */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+            <span
+              style={{
+                color: "#f0f0f2",
+                fontSize: "13px",
+                fontWeight: 500,
+                lineHeight: 1.2,
+                whiteSpace: "nowrap",
+                fontFamily: "'Inter', system-ui, sans-serif",
+              }}
+            >
               Copied to clipboard
             </span>
-            <span className="text-zinc-400 text-[11px] leading-tight whitespace-nowrap mt-0.5">
-              No text field • Press {isMac ? "⌘V" : "Ctrl+V"} to paste
+            <span
+              style={{
+                color: "#71717a",
+                fontSize: "11px",
+                lineHeight: 1.2,
+                whiteSpace: "nowrap",
+                fontFamily: "'Inter', system-ui, sans-serif",
+              }}
+            >
+              Press {isMac ? "⌘V" : "Ctrl+V"} to paste
             </span>
           </div>
         </div>
       )}
+
+      {/* Keyframe animations */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.6; }
+        }
+        @keyframes ping {
+          0% { transform: scale(1); opacity: 0.3; }
+          75%, 100% { transform: scale(1.8); opacity: 0; }
+        }
+      `}</style>
     </div>
   );
 };

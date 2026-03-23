@@ -24,8 +24,7 @@ let pillWindow: BrowserWindow | null = null;
 function createTrayWindow() {
   trayWindow = new BrowserWindow({
     width: 300,
-    height: 380,
-    type: "panel",
+    height: 460,
     frame: false,
     resizable: false,
     show: false,
@@ -37,6 +36,7 @@ function createTrayWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
+    ...(process.platform === "darwin" && { type: "panel" }),
   });
 
   trayWindow.on("blur", () => {
@@ -92,8 +92,8 @@ function createPillWindow() {
   const { width, height } = primary.bounds;
 
   // Pill dimensions
-  const pillWidth = 240;
-  const pillHeight = 80;
+  const pillWidth = 280;
+  const pillHeight = 88;
   const bottomPadding = 32;
 
   pillWindow = new BrowserWindow({
@@ -101,7 +101,6 @@ function createPillWindow() {
     y: height - pillHeight - bottomPadding,
     width: pillWidth,
     height: pillHeight,
-    type: "panel",
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -116,10 +115,13 @@ function createPillWindow() {
       nodeIntegration: false,
     },
     show: false,
+    ...(process.platform === "darwin" && { type: "panel" }),
   });
 
   pillWindow.setAlwaysOnTop(true, "screen-saver", 1);
-  pillWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  if (process.platform === "darwin") {
+    pillWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
 
   const isDev = process.env.NODE_ENV === "development";
 
@@ -188,12 +190,22 @@ function createTray() {
   });
 }
 
+function getBackendWorkingDirectory(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "backend");
+  }
+  return path.join(__dirname, "..", "..", "backend");
+}
+
 function startBackend() {
-  const backendDir = path.join(__dirname, "..", "..", "backend");
+  const backendDir = getBackendWorkingDirectory();
   console.log("[main.ts] Starting Python backend at:", backendDir);
 
+  // Use platform-appropriate Python executable
+  const pythonCmd = process.platform === "win32" ? "python" : "python3";
+
   // Use sub-process spawn
-  backendProcess = spawn("python3", ["main.py"], {
+  backendProcess = spawn(pythonCmd, ["main.py"], {
     cwd: backendDir,
     stdio: "inherit",
   });
@@ -308,12 +320,6 @@ function connectWebSocket() {
   ws.onmessage = (event: MessageEvent) => {
     try {
       const message = JSON.parse(event.data.toString());
-
-      // Handle command mode state updates from backend
-      if (message.type === "command_mode") {
-        isCommandMode = message.data.active;
-        console.log("[main.ts] Command mode:", isCommandMode);
-      }
 
       // Handle generated text
       if (message.type === "text_generated") {

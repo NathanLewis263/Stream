@@ -14,6 +14,7 @@ import numpy as np
 from groq import Groq
 import ten_vad
 from commands import command_manager
+from hotkey_config import hotkey_config
 from text_output import output_text
 
 SAMPLE_RATE = 16000
@@ -50,6 +51,22 @@ class VoiceEngine:
         self.on_status_change = None
         self.on_text_generated = None
         self.on_audio_level = None
+        self.on_processing_error = None
+
+        self.last_raw_text: Optional[str] = None
+        self.last_final_text: Optional[str] = None
+
+    def _push_to_talk_label(self) -> str:
+        try:
+            hk = hotkey_config.get_hotkeys()
+            return hk.get("push_to_talk", {}).get(sys.platform, {}).get("key", "—")
+        except Exception as e:
+            self.logger.debug("push_to_talk label: %s", e)
+            return "—"
+
+    def _notify_processing_error(self, code: str, message: str):
+        if self.on_processing_error:
+            self.on_processing_error({"code": code, "message": message})
 
     def notify_status(self):
         if self.on_status_change:
@@ -58,15 +75,17 @@ class VoiceEngine:
                 "processing": self.is_processing,
                 "hands_free": self.is_hands_free,
                 "command_mode": self.is_command_mode,
-                "hotkey": "Ctrl Left",
-                "snippets": command_manager.get_snippets()
+                "hotkey": self._push_to_talk_label(),
+                "snippets": command_manager.get_snippets(),
+                "dictation": command_manager.get_dictation_settings(),
             })
 
     def get_system_prompt(self):
         path = Path(__file__).resolve().parent / "templates" / "system.md"
         try:
             return path.read_text().strip() if path.exists() else "You are a helpful assistant."
-        except:
+        except Exception as e:
+            self.logger.warning("get_system_prompt: %s", e)
             return "You are a helpful assistant."
 
     def _get_active_context(self) -> dict:
@@ -76,11 +95,12 @@ class VoiceEngine:
                 capture_output=True, text=True, check=True
             )
             return json.loads(result.stdout.strip())
-        except:
+        except Exception as e:
+            self.logger.warning("active_context: %s", e)
             return {}
 
     def _build_prompt(self, base_prompt: str, extra: str = "") -> str:
-        prompt = base_prompt
+        prompt = base_prompt + command_manager.get_style_prompt_fragment()
         snippets = command_manager.get_snippets()
         dictionary = command_manager.get_dictionary()
         prompt += "\n\n### Replacements"
@@ -136,7 +156,8 @@ class VoiceEngine:
             if hasattr(self, 'stream'):
                 self.stream.stop()
                 self.stream.close()
-            return np.concatenate(self.audio_data, axis=0) if self.audio_data else None
+            audio = np.concatenate(self.audio_data, axis=0) if self.audio_data else None
+        return audio
 
     def discard_recording(self):
         with self.lock:
@@ -164,7 +185,8 @@ class VoiceEngine:
                 else:
                     consecutive = 0
             return False
-        except:
+        except Exception as e:
+            self.logger.warning("VAD _contains_speech: %s", e)
             return True
 
     def _transcribe_audio(self, audio_data: np.ndarray) -> Optional[str]:
@@ -179,7 +201,11 @@ class VoiceEngine:
                 f.writeframes(audio_data.flatten().astype(np.int16).tobytes())
             wav_buffer.seek(0)
             wav_buffer.name = "audio.wav"
-            return self.client.audio.transcriptions.create(file=wav_buffer, model="whisper-large-v3").text.strip()
+            lang = command_manager.get_dictation_settings().get("language") or "auto"
+            kwargs = {"file": wav_buffer, "model": "whisper-large-v3"}
+            if lang and lang != "auto":
+                kwargs["language"] = lang
+            return self.client.audio.transcriptions.create(**kwargs).text.strip()
         except Exception as e:
             self.logger.error(f"Transcription error: {e}")
             return None
@@ -200,23 +226,31 @@ class VoiceEngine:
             return raw_text
 
     def process_audio(self, audio_data: Optional[np.ndarray], command_mode: bool = False):
-        if audio_data is None or not self.client:
+        if audio_data is None:
+            return
+        if not self.client:
+            self._notify_processing_error("no_client", "Groq client is not configured.")
             return
 
         self.is_processing = True
         self.notify_status()
         try:
             if not self._contains_speech(audio_data):
+                self._notify_processing_error("no_speech", "No speech detected — try speaking longer or louder.")
                 return
 
             raw_text = self._transcribe_audio(audio_data)
             self.logger.info(f"Raw: {raw_text}")
             if not raw_text:
+                self._notify_processing_error("empty_transcription", "Transcription returned empty audio.")
                 return
 
             prompt = self._build_prompt(self.get_system_prompt())
             final_text = self._refine_text(raw_text, prompt)
             self.logger.info(f"Final: {final_text}")
+
+            self.last_raw_text = raw_text
+            self.last_final_text = final_text
 
             output_result = output_text(final_text) if not command_mode else None
 
@@ -232,7 +266,10 @@ class VoiceEngine:
             self.notify_status()
 
     def process_editor_command(self, selected_text: str, instruction: str):
-        if not instruction or not selected_text or not self.client:
+        if not instruction or not selected_text:
+            return
+        if not self.client:
+            self._notify_processing_error("no_client", "Groq client is not configured.")
             return
 
         self.is_processing = True

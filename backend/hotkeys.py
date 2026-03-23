@@ -8,7 +8,11 @@ import threading
 import logging
 from typing import Callable, Optional, Dict, Any, List, Set
 
-from keycodes import MAC_KEYCODE_TO_MODIFIER, MAC_KEYCODE_TO_NAME, get_key_name
+from keycodes import (
+    MAC_KEYCODE_TO_MODIFIER, MAC_KEYCODE_TO_NAME,
+    WIN_VK_TO_MODIFIER, WIN_VK_TO_NAME,
+    get_key_name, is_modifier, get_modifier_type, get_modifier_map,
+)
 
 logger = logging.getLogger(__name__)
 
