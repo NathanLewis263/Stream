@@ -1,5 +1,5 @@
 import json
-import os
+import copy
 import logging
 from pathlib import Path
 
@@ -8,7 +8,32 @@ DATA_FILE = Path("user_data.json")
 
 DEFAULT_DATA = {
     "snippets": {},
-    "dictionary": {} 
+    "dictionary": {},
+    "dictation": {
+        "language": "auto",
+        "style": "default",
+    },
+}
+
+# Appended to the refine prompt (Wispr-style tone presets)
+STYLE_PROMPTS = {
+    "default": "",
+    "formal": (
+        "\n\n### Style\nUse a formal, professional tone suitable for business documents and external email. "
+        "Avoid slang; keep sentences clear and complete."
+    ),
+    "casual": (
+        "\n\n### Style\nUse a casual, conversational tone suitable for Slack, DMs, and quick internal notes. "
+        "Contractions are fine; keep it natural and brief."
+    ),
+    "enthusiastic": (
+        "\n\n### Style\nUse an enthusiastic, warm tone while staying clear and concise. "
+        "Avoid excessive exclamation points."
+    ),
+    "technical": (
+        "\n\n### Style\nOptimize for technical writing: preserve identifiers, file paths, flags, and API names. "
+        "Use markdown fenced code blocks for code. Do not invent library names or commands."
+    ),
 }
 
 class CommandManager:
@@ -34,14 +59,32 @@ class CommandManager:
 
     def _load_data(self):
         if not DATA_FILE.exists():
-            self._save_data(DEFAULT_DATA)
-            return DEFAULT_DATA
+            data = copy.deepcopy(DEFAULT_DATA)
+            self._save_data(data)
+            return data
         try:
             with open(DATA_FILE, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+            if self._merge_dictation_defaults(data):
+                self._save_data(data)
+            return data
         except Exception as e:
             self.logger.error(f"Failed to load data: {e}")
-            return DEFAULT_DATA
+            return copy.deepcopy(DEFAULT_DATA)
+
+    def _merge_dictation_defaults(self, data: dict) -> bool:
+        """Ensure dictation block exists with known keys. Returns True if data was modified."""
+        changed = False
+        d = data.get("dictation")
+        if not isinstance(d, dict):
+            d = {}
+            changed = True
+        for k, v in DEFAULT_DATA["dictation"].items():
+            if k not in d:
+                d[k] = v
+                changed = True
+        data["dictation"] = d
+        return changed
 
     def _save_data(self, data):
         try:
@@ -100,5 +143,28 @@ class CommandManager:
         dictionary = self.data.get("dictionary", {})
         # Return unique correct words (values)
         return list(set(dictionary.values()))[:100]
+
+    def get_dictation_settings(self) -> dict:
+        d = self.data.get("dictation") or DEFAULT_DATA["dictation"].copy()
+        out = {**DEFAULT_DATA["dictation"], **d}
+        out.pop("live_preview", None)
+        if out.get("style") not in STYLE_PROMPTS:
+            out["style"] = "default"
+        return out
+
+    def set_dictation_settings(self, language: str = None, style: str = None) -> dict:
+        d = self.data.setdefault("dictation", {})
+        if language is not None:
+            d["language"] = (language or "auto").strip().lower() or "auto"
+        if style is not None:
+            st = style.strip().lower() if isinstance(style, str) else "default"
+            d["style"] = st if st in STYLE_PROMPTS else "default"
+        d.pop("live_preview", None)
+        self._save_data(self.data)
+        return self.get_dictation_settings()
+
+    def get_style_prompt_fragment(self) -> str:
+        st = self.get_dictation_settings().get("style", "default")
+        return STYLE_PROMPTS.get(st, STYLE_PROMPTS["default"])
 
 command_manager = CommandManager()

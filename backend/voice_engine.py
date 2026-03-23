@@ -51,6 +51,9 @@ class VoiceEngine:
         self.on_text_generated = None
         self.on_audio_level = None
 
+        self.last_raw_text: Optional[str] = None
+        self.last_final_text: Optional[str] = None
+
     def notify_status(self):
         if self.on_status_change:
             self.on_status_change({
@@ -59,7 +62,8 @@ class VoiceEngine:
                 "hands_free": self.is_hands_free,
                 "command_mode": self.is_command_mode,
                 "hotkey": "Ctrl Left",
-                "snippets": command_manager.get_snippets()
+                "snippets": command_manager.get_snippets(),
+                "dictation": command_manager.get_dictation_settings(),
             })
 
     def get_system_prompt(self):
@@ -80,7 +84,7 @@ class VoiceEngine:
             return {}
 
     def _build_prompt(self, base_prompt: str, extra: str = "") -> str:
-        prompt = base_prompt
+        prompt = base_prompt + command_manager.get_style_prompt_fragment()
         snippets = command_manager.get_snippets()
         dictionary = command_manager.get_dictionary()
         prompt += "\n\n### Replacements"
@@ -136,7 +140,8 @@ class VoiceEngine:
             if hasattr(self, 'stream'):
                 self.stream.stop()
                 self.stream.close()
-            return np.concatenate(self.audio_data, axis=0) if self.audio_data else None
+            audio = np.concatenate(self.audio_data, axis=0) if self.audio_data else None
+        return audio
 
     def discard_recording(self):
         with self.lock:
@@ -179,7 +184,11 @@ class VoiceEngine:
                 f.writeframes(audio_data.flatten().astype(np.int16).tobytes())
             wav_buffer.seek(0)
             wav_buffer.name = "audio.wav"
-            return self.client.audio.transcriptions.create(file=wav_buffer, model="whisper-large-v3").text.strip()
+            lang = command_manager.get_dictation_settings().get("language") or "auto"
+            kwargs = {"file": wav_buffer, "model": "whisper-large-v3"}
+            if lang and lang != "auto":
+                kwargs["language"] = lang
+            return self.client.audio.transcriptions.create(**kwargs).text.strip()
         except Exception as e:
             self.logger.error(f"Transcription error: {e}")
             return None
@@ -217,6 +226,9 @@ class VoiceEngine:
             prompt = self._build_prompt(self.get_system_prompt())
             final_text = self._refine_text(raw_text, prompt)
             self.logger.info(f"Final: {final_text}")
+
+            self.last_raw_text = raw_text
+            self.last_final_text = final_text
 
             output_result = output_text(final_text) if not command_mode else None
 

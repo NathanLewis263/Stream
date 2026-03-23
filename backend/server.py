@@ -68,6 +68,11 @@ class EditorCommand(BaseModel):
     instruction: str
     selected_text: str
 
+
+class DictationSettingsBody(BaseModel):
+    language: Optional[str] = None
+    style: Optional[str] = None
+
 def run_status_server(engine_ref):
     """
     Runs a lightweight FastAPI server.
@@ -93,7 +98,8 @@ def run_status_server(engine_ref):
                     "hotkey": ptt_key,
                     "snippets": command_manager.get_snippets(),
                     "hotkeys": hotkeys,
-                    "platform": platform
+                    "platform": platform,
+                    "dictation": command_manager.get_dictation_settings(),
                 }
             })
             while True:
@@ -234,6 +240,26 @@ def run_status_server(engine_ref):
         success = command_manager.remove_from_dictionary(key)
         engine_ref.notify_status()
         return {"status": "ok" if success else "not_found"}
+
+    @app.get("/settings/dictation")
+    def get_dictation_settings():
+        return command_manager.get_dictation_settings()
+
+    @app.post("/settings/dictation")
+    def set_dictation_settings(body: DictationSettingsBody):
+        updated = command_manager.set_dictation_settings(
+            language=body.language,
+            style=body.style,
+        )
+        engine_ref.notify_status()
+        return updated
+
+    @app.get("/dictation/last")
+    def get_last_dictation():
+        return {
+            "raw": getattr(engine_ref, "last_raw_text", None),
+            "final": getattr(engine_ref, "last_final_text", None),
+        }
 
     uvicorn.run(app, host="127.0.0.1", port=STATUS_SERVER_PORT, log_level="warning")
 

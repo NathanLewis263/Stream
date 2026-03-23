@@ -24,7 +24,7 @@ let pillWindow: BrowserWindow | null = null;
 function createTrayWindow() {
   trayWindow = new BrowserWindow({
     width: 300,
-    height: 380,
+    height: 460,
     frame: false,
     resizable: false,
     show: false,
@@ -92,8 +92,8 @@ function createPillWindow() {
   const { width, height } = primary.bounds;
 
   // Pill dimensions
-  const pillWidth = 240;
-  const pillHeight = 80;
+  const pillWidth = 280;
+  const pillHeight = 88;
   const bottomPadding = 32;
 
   pillWindow = new BrowserWindow({
@@ -190,8 +190,15 @@ function createTray() {
   });
 }
 
+function getBackendWorkingDirectory(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "backend");
+  }
+  return path.join(__dirname, "..", "..", "backend");
+}
+
 function startBackend() {
-  const backendDir = path.join(__dirname, "..", "..", "backend");
+  const backendDir = getBackendWorkingDirectory();
   console.log("[main.ts] Starting Python backend at:", backendDir);
 
   // Use platform-appropriate Python executable

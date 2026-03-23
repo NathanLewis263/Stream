@@ -1,6 +1,7 @@
 {
   "name": "audio-to-text-overlay",
   "version": "1.0.0",
+  "author": "Stream",
   "description": "Global overlay for audio-to-text backend — red border when recording",
   "main": "dist/main.js",
   "scripts": {
@@ -8,7 +9,43 @@
     "start": "npm run build && electron .",
     "dev": "concurrently -k \"vite\" \"npm run electron:dev\"",
     "electron:dev": "tsc && cross-env NODE_ENV=development electron .",
-    "clean": "rimraf dist dist-react"
+    "clean": "rimraf dist dist-react",
+    "dist": "npm run build && electron-builder"
+  },
+  "build": {
+    "appId": "com.stream.dictation",
+    "productName": "Stream Dictation",
+    "asar": true,
+    "files": [
+      "dist/**/*",
+      "dist-react/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/*.pyc"
+        ]
+      }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",
@@ -21,6 +58,7 @@
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "electron": "^28.0.0",
+    "electron-builder": "^25.1.8",
     "postcss": "^8.5.6",
     "react-dom": "^19.2.4",
     "rimraf": "^6.1.3",
