@@ -321,12 +321,6 @@ function connectWebSocket() {
     try {
       const message = JSON.parse(event.data.toString());
 
-      // Handle command mode state updates from backend
-      if (message.type === "command_mode") {
-        isCommandMode = message.data.active;
-        console.log("[main.ts] Command mode:", isCommandMode);
-      }
-
       // Handle generated text
       if (message.type === "text_generated") {
         const { text, command_mode, output_method } = message.data;

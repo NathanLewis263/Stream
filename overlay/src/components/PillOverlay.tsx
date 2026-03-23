@@ -10,6 +10,7 @@ const PillOverlay = () => {
     sendAction,
     audioLevel,
     clipboardToast,
+    errorToast,
   } = useStatus();
   const [audioLevels, setAudioLevels] = useState<number[]>(Array(8).fill(0.15));
   const [isHovered, setIsHovered] = useState(false);
@@ -18,15 +19,16 @@ const PillOverlay = () => {
 
   const showPill = recording || processing;
   const showToast = clipboardToast.visible;
+  const showError = errorToast.visible;
 
   // Animate in/out
   useEffect(() => {
-    if (showPill || showToast) {
+    if (showPill || showToast || showError) {
       requestAnimationFrame(() => setIsVisible(true));
     } else {
       setIsVisible(false);
     }
-  }, [showPill, showToast]);
+  }, [showPill, showToast, showError]);
 
   useEffect(() => {
     if (recording && audioLevel > 0) {
@@ -53,9 +55,8 @@ const PillOverlay = () => {
     return () => clearInterval(interval);
   }, [processing, recording]);
 
-  if (!showPill && !showToast) return null;
+  if (!showPill && !showToast && !showError) return null;
 
-  // Wispr Flow inspired color themes
   const colors = {
     recording: { accent: "#ef4444", glow: "rgba(239, 68, 68, 0.4)" },
     processing: { accent: "#4d65ff", glow: "rgba(77, 101, 255, 0.4)" },
@@ -203,8 +204,21 @@ const PillOverlay = () => {
         </div>
       )}
 
+      {showError && !showPill && (
+        <div
+          className={`
+            pointer-events-auto flex items-center gap-3 px-3 py-2 rounded-full max-w-[min(90vw,420px)]
+            bg-zinc-900/90 border-2 border-amber-500/40
+            shadow-lg backdrop-blur-sm
+            animate-in fade-in slide-in-from-bottom-4 duration-300
+          `}
+        >
+          <span className="text-amber-400 text-sm leading-snug">{errorToast.text}</span>
+        </div>
+      )}
+
       {/* Clipboard Toast */}
-      {showToast && !showPill && (
+      {showToast && !showPill && !showError && (
         <div
           style={{
             pointerEvents: "auto",

@@ -6,7 +6,6 @@ export interface StatusData {
   hands_free: boolean;
   command_mode: boolean;
   hotkey: string;
-  commands: Record<string, string> | null;
   snippets: Record<string, string> | null;
 }
 
@@ -24,10 +23,23 @@ export const useStatus = () => {
   const [snippets, setSnippets] = useState<Record<string, string> | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [clipboardToast, setClipboardToast] = useState<ClipboardToast>({ visible: false, text: "" });
+  const [errorToast, setErrorToast] = useState<ClipboardToast>({ visible: false, text: "" });
+  const [wsConnected, setWsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const errorToastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const statusPort = window.overlay?.statusPort || 3847;
+
+  const showErrorToast = useCallback((text: string) => {
+    if (errorToastTimeoutRef.current) {
+      clearTimeout(errorToastTimeoutRef.current);
+    }
+    setErrorToast({ visible: true, text });
+    errorToastTimeoutRef.current = setTimeout(() => {
+      setErrorToast({ visible: false, text: "" });
+    }, 4000);
+  }, []);
 
   const showClipboardToast = useCallback((text: string) => {
     // Clear any existing timeout
@@ -58,6 +70,7 @@ export const useStatus = () => {
 
       wsRef.current.onopen = () => {
         console.log("[useStatus] Connected");
+        setWsConnected(true);
         if (reconnectTimeout) clearTimeout(reconnectTimeout);
       };
 
@@ -77,6 +90,9 @@ export const useStatus = () => {
             window.overlay?.updateTray?.(Boolean(data.recording));
           } else if (message.type === "audio_level") {
             setAudioLevel(message.data.level);
+          } else if (message.type === "processing_error") {
+            const msg = message.data?.message || "Dictation error";
+            showErrorToast(String(msg));
           } else if (message.type === "text_generated") {
             // Show toast when clipboard fallback was used
             const { output_method, text } = message.data;
@@ -91,11 +107,13 @@ export const useStatus = () => {
       };
 
       wsRef.current.onclose = () => {
+        setWsConnected(false);
         console.log("[useStatus] Disconnected. Reconnecting...");
         reconnectTimeout = setTimeout(connect, 1000);
       };
 
       wsRef.current.onerror = (err) => {
+        setWsConnected(false);
         console.error("[useStatus] Error:", err);
         wsRef.current?.close();
       };
@@ -104,10 +122,12 @@ export const useStatus = () => {
     connect();
 
     return () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      if (errorToastTimeoutRef.current) clearTimeout(errorToastTimeoutRef.current);
       if (wsRef.current) wsRef.current.close();
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
-  }, [statusPort]);
+  }, [statusPort, showClipboardToast, showErrorToast]);
 
   return {
     recording,
@@ -120,5 +140,7 @@ export const useStatus = () => {
     sendAction,
     audioLevel,
     clipboardToast,
+    errorToast,
+    wsConnected,
   };
 };
