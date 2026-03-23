@@ -3,8 +3,8 @@ import copy
 import logging
 from pathlib import Path
 
-# File to store commands/snippets
-DATA_FILE = Path("user_data.json")
+# File to store commands/snippets (stable path regardless of cwd)
+DATA_FILE = Path(__file__).resolve().parent / "user_data.json"
 
 DEFAULT_DATA = {
     "snippets": {},

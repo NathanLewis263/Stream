@@ -3,6 +3,7 @@ import sys
 import threading
 import logging
 import time
+from pathlib import Path
 from dotenv import load_dotenv
 
 from voice_engine import VoiceEngine
@@ -11,7 +12,9 @@ from hotkeys import HotkeyListener, HotkeyCallbacks
 from hotkey_config import hotkey_config
 
 # --- Setup & Configuration ---
-load_dotenv()
+BACKEND_DIR = Path(__file__).resolve().parent
+load_dotenv(BACKEND_DIR.parent / ".env")
+load_dotenv(BACKEND_DIR / ".env", override=True)
 
 # Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

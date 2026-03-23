@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable
 
-DATA_FILE = Path("user_data.json")
+DATA_FILE = Path(__file__).resolve().parent / "user_data.json"
 
 # Default hotkey configuration per platform
 DEFAULT_HOTKEYS = {
