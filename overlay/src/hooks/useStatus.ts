@@ -7,6 +7,7 @@ export interface StatusData {
   command_mode: boolean;
   hotkey: string;
   snippets: Record<string, string> | null;
+  has_api_key?: boolean;
 }
 
 export interface ClipboardToast {
@@ -21,6 +22,7 @@ export const useStatus = () => {
   const [commandMode, setCommandMode] = useState(false);
   const [hotkey, setHotkey] = useState("—");
   const [snippets, setSnippets] = useState<Record<string, string> | null>(null);
+  const [hasApiKey, setHasApiKey] = useState(true);
   const [audioLevel, setAudioLevel] = useState(0);
   const [clipboardToast, setClipboardToast] = useState<ClipboardToast>({ visible: false, text: "" });
   const [errorToast, setErrorToast] = useState<ClipboardToast>({ visible: false, text: "" });
@@ -85,6 +87,9 @@ export const useStatus = () => {
             setCommandMode(Boolean(data.command_mode));
             setHotkey(data.hotkey || "—");
             setSnippets(data.snippets);
+            if (data.has_api_key !== undefined) {
+              setHasApiKey(Boolean(data.has_api_key));
+            }
 
             // Sync tray status
             window.overlay?.updateTray?.(Boolean(data.recording));
@@ -136,6 +141,7 @@ export const useStatus = () => {
     commandMode,
     hotkey,
     snippets,
+    hasApiKey,
     statusPort,
     sendAction,
     audioLevel,

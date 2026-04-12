@@ -78,6 +78,7 @@ class VoiceEngine:
                 "hotkey": self._push_to_talk_label(),
                 "snippets": command_manager.get_snippets(),
                 "dictation": command_manager.get_dictation_settings(),
+                "has_api_key": self.client is not None,
             })
 
     def get_system_prompt(self):

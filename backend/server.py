@@ -10,6 +10,9 @@ import json
 import asyncio
 import sys
 from typing import List, Optional, Callable
+import os
+from pathlib import Path
+from dotenv import set_key
 
 STATUS_SERVER_PORT = 3847
 
@@ -73,6 +76,9 @@ class DictationSettingsBody(BaseModel):
     language: Optional[str] = None
     style: Optional[str] = None
 
+class ApiKeyBody(BaseModel):
+    key: str
+
 
 def create_app(engine_ref):
     @asynccontextmanager
@@ -126,6 +132,7 @@ def create_app(engine_ref):
                         "hotkeys": hotkeys,
                         "platform": platform,
                         "dictation": command_manager.get_dictation_settings(),
+                        "has_api_key": getattr(engine_ref, "client", None) is not None,
                     },
                 }
             )
@@ -283,6 +290,27 @@ def create_app(engine_ref):
         )
         engine_ref.notify_status()
         return updated
+
+    @app.post("/settings/api_key")
+    def set_api_key(body: ApiKeyBody):
+        import groq
+        env_path = Path(__file__).resolve().parent.parent / ".env"
+        if not env_path.exists():
+            env_path = Path(__file__).resolve().parent / ".env"
+            
+        set_key(str(env_path), "GROQ_API_KEY", body.key)
+        os.environ["GROQ_API_KEY"] = body.key
+        
+        # Reload client in voice_engine
+        try:
+            engine_ref.client = groq.Groq(api_key=body.key)
+            engine_ref.logger.info("Successfully re-initialized Groq client dynamically.")
+        except Exception as e:
+            engine_ref.logger.error(f"Failed to initialize Groq dynamically: {e}")
+            engine_ref.client = None
+
+        engine_ref.notify_status()
+        return {"status": "ok", "has_api_key": getattr(engine_ref, "client", None) is not None}
 
     @app.get("/dictation/last")
     def get_last_dictation():

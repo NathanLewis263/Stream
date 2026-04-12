@@ -4,6 +4,7 @@ import { DictionarySettings } from "./DictionarySettings";
 import { HotkeySettings } from "./HotkeySettings";
 import { SettingsList } from "./SettingsList";
 import { useStatus } from "../hooks/useStatus";
+import { GroqApiPrompt } from "./GroqApiPrompt";
 
 type Tab = "dictation" | "snippets" | "dictionary" | "hotkeys";
 
@@ -48,7 +49,7 @@ const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
 
 const SettingsWindow = () => {
   const [activeTab, setActiveTab] = useState<Tab>("dictation");
-  const { snippets, statusPort, wsConnected } = useStatus();
+  const { snippets, statusPort, wsConnected, hasApiKey } = useStatus();
 
   return (
     <div className="w-screen h-screen bg-[#0a0a0c] text-zinc-100 flex flex-col overflow-hidden">
@@ -101,6 +102,11 @@ const SettingsWindow = () => {
       {/* Content */}
       <main className="relative flex-1 overflow-auto bg-[#0a0a0c]">
         <div className="max-w-3xl mx-auto px-8 py-8">
+          {!hasApiKey && (
+            <div className="animate-[fade-in_0.2s_ease-out]">
+              <GroqApiPrompt statusPort={statusPort} />
+            </div>
+          )}
           {activeTab === "hotkeys" && (
             <div className="animate-[fade-in_0.2s_ease-out]">
               <HotkeySettings />

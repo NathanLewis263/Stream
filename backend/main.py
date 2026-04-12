@@ -29,8 +29,7 @@ def main():
     global command_mode_active
 
     if not os.getenv("GROQ_API_KEY"):
-        print("\n❌ CRITICAL: GROQ_API_KEY is missing from .env\n")
-        return
+        print("\n⚠️ WARNING: GROQ_API_KEY is missing from .env. The user will be prompted to enter it.\n")
 
     engine = VoiceEngine()
 

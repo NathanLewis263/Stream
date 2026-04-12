@@ -5,9 +5,10 @@ import { DictationSettings } from "./DictationSettings";
 import { DictionarySettings } from "./DictionarySettings";
 import { HotkeyDisplay } from "./HotkeyDisplay";
 import { SettingsList } from "./SettingsList";
+import { GroqApiPrompt } from "./GroqApiPrompt";
 
 const SettingsTray = () => {
-  const { recording, snippets, statusPort } = useStatus();
+  const { recording, snippets, statusPort, hasApiKey } = useStatus();
   const [overlayVisible, setOverlayVisible] = useState(true);
 
   useEffect(() => {
@@ -98,7 +99,12 @@ const SettingsTray = () => {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Content / Tabs */}
+      {!hasApiKey ? (
+        <div className="flex-1 mt-2 min-h-0 overflow-y-auto overflow-x-hidden animate-[fade-in_0.2s_ease-out]">
+          <GroqApiPrompt statusPort={statusPort} compact />
+        </div>
+      ) : (
       <Tabs
         defaultValue="hotkeys"
         className="relative flex-1 flex flex-col overflow-hidden min-h-0"
@@ -179,6 +185,7 @@ const SettingsTray = () => {
           <DictionarySettings compact />
         </TabsContent>
       </Tabs>
+      )}
     </div>
   );
 };
